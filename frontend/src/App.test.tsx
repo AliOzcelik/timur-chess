@@ -81,14 +81,14 @@ describe('App', () => {
 
     window.location.hash = '#/review/1'
     render(<App />)
-    expect(await screen.findByRole('heading', { level: 1, name: 'You vs Opponent' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'You — Opponent' })).toBeInTheDocument()
   })
 
   it('unknown pages say so', async () => {
     server()
     window.location.hash = '#/nowhere'
     render(<App />)
-    expect(screen.getByText('There is no page here.')).toBeInTheDocument()
+    expect(screen.getByText('There is no page here')).toBeInTheDocument()
   })
 
   it('links every section in the sidebar', () => {

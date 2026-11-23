@@ -14,17 +14,27 @@ import { ReviewPage } from './pages/ReviewPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { engineClient, useEngine } from './state/engine'
 import { useHealth } from './state/health'
-import { applyTheme } from './state/theme'
+import { applyAppearance } from './state/theme'
+import { api } from './lib/api'
+import { CommandPalette } from './components/CommandPalette'
+import { Toasts } from './components/Toasts'
+import { Masthead } from './components/Masthead'
 
-const NAV = [
-  { id: 'analysis', label: 'Analysis board', icon: 'board' },
+const STUDY = [
+  { id: 'analysis', label: 'Analysis', aria: 'Analysis board', icon: 'board' },
   { id: 'review', label: 'Game review', icon: 'review' },
   { id: 'library', label: 'Library', icon: 'library' },
   { id: 'notes', label: 'Notes', icon: 'notes' },
+]
+const TRAIN = [
   { id: 'endgames', label: 'Endgames', icon: 'endgame' },
   { id: 'practice', label: 'Practice', icon: 'practice' },
   { id: 'prep', label: 'Tournament prep', icon: 'prep' },
 ]
+
+function hashText(mb: number): string {
+  return mb >= 1024 ? `${mb / 1024} GB` : `${mb} MB`
+}
 
 function EngineStatus() {
   const health = useHealth((s) => s.health)
@@ -33,7 +43,7 @@ function EngineStatus() {
   const live = health?.engines.live
   let state: 'ok' | 'warn' | 'bad' = 'ok'
   let text = live?.name ?? 'Stockfish'
-  let detail = live ? `${live.threads} threads, ${live.hash_mb >= 1024 ? `${live.hash_mb / 1024} GB` : `${live.hash_mb} MB`} hash` : ''
+  let detail = live ? `${live.threads} threads, ${hashText(live.hash_mb)} hash` : ''
   if (healthError || !connected) {
     state = 'bad'
     text = 'Server offline'
@@ -47,14 +57,46 @@ function EngineStatus() {
     text = 'Connecting…'
     detail = ''
   }
+  const threads = live && state === 'ok' ? Math.min(8, Math.max(1, Math.round(live.threads))) : 0
   return (
-    <div className={`engine-status status-${state}`} role="status">
-      <span className="status-light" aria-hidden="true" />
-      <span className="status-text">
-        <strong>{text}</strong>
-        {detail && <span>{detail}</span>}
-      </span>
-    </div>
+    <a className={`engine-status status-${state}`} href="#/settings" role="status" title={`${text}${detail ? ` · ${detail}` : ''}`}>
+      <span className="engine-top"><span className="dot" aria-hidden="true" /><span>{text}</span></span>
+      {detail && <span className="engine-meta">{detail}</span>}
+      {state === 'ok' && live && (
+        <span className="engine-bars" aria-hidden="true">
+          {Array.from({ length: 8 }, (_, i) => <span key={i} className={i < threads ? 'on' : undefined} />)}
+        </span>
+      )}
+    </a>
+  )
+}
+
+/** Due counts for the Train badges: endgame lessons and puzzles that are due today. */
+function useDueCounts(section: string) {
+  const [due, setDue] = useState<{ endgames: number; practice: number }>({ endgames: 0, practice: 0 })
+  useEffect(() => {
+    let live = true
+    Promise.all([api.training('endgame').catch(() => null), api.training('puzzle').catch(() => null)]).then(([e, p]) => {
+      if (live) setDue({ endgames: e?.due ?? 0, practice: p?.due ?? 0 })
+    })
+    return () => { live = false }
+  }, [section])
+  return due
+}
+
+function NavLink({ item, section, badge }: { item: { id: string; label: string; aria?: string; icon: string }; section: string; badge?: number }) {
+  return (
+    <a
+      href={`#/${item.id}`}
+      className="nav-item"
+      aria-label={item.aria ?? item.label}
+      aria-current={section === item.id ? 'page' : undefined}
+      title={item.aria ?? item.label}
+    >
+      <Icon name={item.icon} />
+      <span>{item.label}</span>
+      {badge ? <span className="nav-badge" aria-label={`${badge} due`}>{badge}</span> : null}
+    </a>
   )
 }
 
@@ -80,11 +122,24 @@ export function App() {
   const [welcome, setWelcome] = useState(false)
   useEffect(() => {
     if (!settings) return
-    applyTheme(settings.theme)
+    applyAppearance({ theme: settings.theme, accent: settings.accent, board: settings.board })
     if (!settings.onboarded) setWelcome(true)
-  }, [settings?.theme, settings?.onboarded]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [settings?.theme, settings?.accent, settings?.board, settings?.onboarded]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen((o) => !o)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const section = route[0] ?? 'analysis'
+  const due = useDueCounts(section)
   let page: React.ReactNode
   if (section === 'review') {
     const sub = route[1]
@@ -107,9 +162,12 @@ export function App() {
   } else {
     page = (
       <div className="page">
-        <header className="page-head"><h1>Not found</h1></header>
-        <p className="empty">There is no page here.</p>
-        <a className="btn btn-quiet" href="#/analysis">Go to the analysis board</a>
+        <Masthead section="Timur" title="Not found" />
+        <div className="empty-state">
+          <h2>There is no page here</h2>
+          <p>The link may be old. Everything is one click away in the rail.</p>
+          <a className="btn btn-primary" href="#/analysis">Go to the analysis board</a>
+        </div>
       </div>
     )
   }
@@ -117,28 +175,38 @@ export function App() {
   return (
     <div className="app">
       <a className="skip-link" href="#main">Skip to content</a>
-      <nav className="sidebar" aria-label="Main">
+      <nav className="rail" aria-label="Main">
         <a className="brand" href="#/analysis" aria-label="Timur Chess, analysis board">
-          <img className="brand-mark" src="/logo-mark.png" width="32" height="32" alt="" />
-          <span>Timur</span>
+          <img src="/logo-mark.png" width="36" height="36" alt="" />
+          <div>
+            <div className="brand-name">Timur</div>
+            <div className="brand-sub">Chess trainer</div>
+          </div>
         </a>
-        <ul className="nav-list">
-          {NAV.map((item) => (
-            <li key={item.id} className={item.id === 'endgames' ? 'nav-break' : undefined}>
-              <a href={`#/${item.id}`} className="nav-item" aria-current={section === item.id ? 'page' : undefined}>
-                <Icon name={item.icon} size={19} />
-                <span>{item.label}</span>
-              </a>
-            </li>
+        <button type="button" className="search" onClick={() => setPaletteOpen(true)} aria-label="Search or jump to (Command K)">
+          <Icon name="search" size={15} />
+          <span>Search or jump to…</span>
+          <kbd>⌘K</kbd>
+        </button>
+        <div className="nav-group">
+          <p className="nav-label">Study</p>
+          {STUDY.map((item) => <NavLink key={item.id} item={item} section={section} />)}
+        </div>
+        <div className="nav-group">
+          <p className="nav-label">Train</p>
+          {TRAIN.map((item) => (
+            <NavLink key={item.id} item={item} section={section}
+              badge={item.id === 'endgames' ? due.endgames : item.id === 'practice' ? due.practice : undefined} />
           ))}
-        </ul>
-        <a href="#/settings" className="nav-item nav-settings" aria-current={section === 'settings' ? 'page' : undefined}>
-          <Icon name="settings" size={19} />
-          <span>Settings</span>
-        </a>
-        <EngineStatus />
+        </div>
+        <div className="rail-foot">
+          <NavLink item={{ id: 'settings', label: 'Settings', icon: 'settings' }} section={section} />
+          <EngineStatus />
+        </div>
       </nav>
       <main id="main" className="main" key={section}>{page}</main>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <Toasts />
       <WelcomeDialog open={welcome} onDone={() => { setWelcome(false); refresh() }} />
     </div>
   )

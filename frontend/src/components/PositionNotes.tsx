@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import { api, type Note, type Opening } from '../lib/api'
+import { formatDate } from '../lib/format'
 import { Icon } from './Icon'
 
-/** Notes saved for the position on the board, plus a quick way to add one. */
+/** Notes saved for the position on the board: a collapsed card with a count, a preview, and a quick way to add one. */
 export function PositionNotes({ fen, opening, gameId }: { fen: string; opening: Opening | null; gameId: number | null }) {
   const [notes, setNotes] = useState<Note[]>([])
   const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [open, setOpen] = useState(false)
 
   useEffect(() => {
     let live = true
@@ -50,38 +52,56 @@ export function PositionNotes({ fen, opening, gameId }: { fen: string; opening: 
     }
   }
 
+  const first = notes[0]
   return (
-    <section className="position-notes" aria-label="Notes for this position">
-      <h3>Notes on this position</h3>
-      {notes.length > 0 && (
-        <ul className="position-note-list">
-          {notes.map((n) => (
-            <li key={n.id}>
-              <a href={`#/notes/${n.id}`}>{n.title || n.body.slice(0, 60) || 'Untitled note'}</a>
-            </li>
-          ))}
-        </ul>
+    <section className="card notes-card position-notes" aria-label="Notes for this position">
+      <button type="button" className="notes-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <Icon name="notes" size={15} />
+        <h3 className="t">Notes on this position</h3>
+        {notes.length > 0 && <span className="count">{notes.length}</span>}
+        <span className="spacer" />
+        <Icon name="chevd" size={15} className={open ? 'rot' : undefined} />
+      </button>
+      {!open && first && (
+        <a className="note-preview" href={`#/notes/${first.id}`}>
+          <p>{first.title || 'Untitled note'}{first.body ? ` — ${first.body.slice(0, 140)}${first.body.length > 140 ? '…' : ''}` : ''}</p>
+          <span className="meta">{first.opening && <span className="tag">{first.opening}</span>}<span>{formatDate(first.updated_at)}</span></span>
+        </a>
       )}
-      <form className="quick-note" onSubmit={add}>
-        <textarea
-          className="input"
-          rows={2}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) add(e)
-          }}
-          placeholder="Write a note about this position. The first line is the title."
-          aria-label="New note for this position"
-        />
-        <div className="row-between">
-          <span className="muted small">⌘ Enter to save</span>
-          <button type="submit" className="btn btn-small" disabled={saving || !text.trim()}>
-            <Icon name="notes" size={15} /> Save note
-          </button>
+      {open && (
+        <div className="notes-body">
+          {notes.length > 0 && (
+            <ul className="position-note-list">
+              {notes.map((n) => (
+                <li key={n.id}>
+                  <a href={`#/notes/${n.id}`}>{n.title || n.body.slice(0, 60) || 'Untitled note'}</a>
+                  <span className="dim">{formatDate(n.updated_at)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <form className="quick-note" onSubmit={add}>
+            <textarea
+              className="input"
+              rows={2}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) add(e)
+              }}
+              placeholder="Write a note about this position. The first line is the title."
+              aria-label="New note for this position"
+            />
+            <div className="row-between">
+              <span className="dim small">⌘ Enter to save</span>
+              <button type="submit" className="btn btn-sm" disabled={saving || !text.trim()}>
+                <Icon name="plus" size={15} /> Add note
+              </button>
+            </div>
+            {error && <p className="form-error" role="alert">{error}</p>}
+          </form>
         </div>
-        {error && <p className="form-error" role="alert">{error}</p>}
-      </form>
+      )}
     </section>
   )
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Icon } from '../components/Icon'
+import { Masthead, Meta } from '../components/Masthead'
 import { Modal } from '../components/Modal'
 import { useLoad } from '../hooks/useLoad'
 import { api, type GameFilters, type GameRow, type OpeningFamily, type Side } from '../lib/api'
@@ -27,83 +28,92 @@ function GameRowView({ g, onOpen, onDelete }: { g: GameRow; onOpen: () => void; 
   const outcome = outcomeOf(g)
   const played = formatPgnDate(g.game_date)
   const acc = g.my_color === 'white' ? g.white_accuracy : g.my_color === 'black' ? g.black_accuracy : null
-  const title = g.kind === 'analysis' && !g.white && !g.black ? 'Analysis' : playersOf(g)
+  const title = g.kind === 'analysis' && !g.white && !g.black ? 'Analysis' : null
   return (
-    <li className="lib-row">
+    <li className="game-row">
       <button type="button" className="lib-open" onClick={onOpen} title="Open on the analysis board">
-        <span className={`lib-outcome ${outcome ? `out-${outcome}` : ''}`} aria-label={outcome ? OUTCOME_TEXT[outcome] : 'Result unknown'}>
+        <span className={`res ${outcome === 'win' ? 'w' : outcome === 'loss' ? 'l' : outcome === 'draw' ? 'd' : ''}`} aria-label={outcome ? OUTCOME_TEXT[outcome] : 'Result unknown'}>
           {outcome === 'win' ? '1' : outcome === 'draw' ? '½' : outcome === 'loss' ? '0' : g.kind === 'analysis' ? '·' : '–'}
         </span>
-        <span className="lib-main">
-          <span className="lib-title">
-            {title}
-            {g.my_color && <span className={`side-pill side-pill-${g.my_color}`}>{g.my_color === 'white' ? 'You: White' : 'You: Black'}</span>}
+        <span className="game-main">
+          <span className="game-title">
+            {title ?? <>{g.white ?? 'Unknown'} <span className="vs">vs</span> {g.black ?? 'Unknown'}</>}
+            {g.my_color && <span className="you">You · {g.my_color === 'white' ? 'White' : 'Black'}</span>}
+            {g.kind === 'analysis' && <span className="you quiet">Analysis</span>}
           </span>
-          <span className="lib-meta">
-            {g.opening ? <span><span className="eco">{g.eco}</span> {g.opening}</span> : <span>Opening not named</span>}
-            {played ? <span>Played {played}</span> : <span>Added {formatPgnDate(g.sort_date.replace(/-/g, '.'))}</span>}
-            {g.event && <span>{g.event}</span>}
-            <span>{Math.ceil(g.ply_count / 2)} moves</span>
+          <span className="game-meta">
+            {g.opening ? <span className="op"><span className="eco">{g.eco}</span>{g.opening}</span> : <span>Opening not named</span>}
+            {g.event && <span>{g.event}{g.round && g.round !== '?' && g.round !== '-' ? ` · Round ${g.round}` : ''}</span>}
+            <span>{played ?? `Added ${formatPgnDate(g.sort_date.replace(/-/g, '.'))}`} · {Math.ceil(g.ply_count / 2)} moves</span>
             {g.tags && g.tags.split(',').map((t) => <span key={t} className="tag">{t.trim()}</span>)}
           </span>
         </span>
+        {acc != null && g.review_status === 'done' ? (
+          <span className="acc-box" title="Your accuracy">
+            <span><span className="acc-num">{Math.round(acc)}</span><span className="acc-label">Accuracy</span></span>
+            <span className="acc-meter"><i style={{ height: `${acc}%` }} /></span>
+          </span>
+        ) : <span className="acc-box empty" aria-hidden="true" />}
+        <span className="row-chev" aria-hidden="true"><Icon name="chev" size={15} /></span>
       </button>
       <span className="lib-side">
         {g.review_id ? (
-          <a className="btn btn-small btn-quiet" href={`#/review/${g.review_id}`}>
-            {g.review_status === 'done' && acc != null ? `Accuracy ${Math.round(acc)}` : 'Review'}
+          <a className="btn btn-sm btn-ghost" href={`#/review/${g.review_id}`} title="Open the review">
+            <Icon name="review" size={15} />{g.review_status === 'done' ? 'Review' : 'Reviewing…'}
           </a>
         ) : null}
-        <button type="button" className="icon-btn" onClick={onDelete} aria-label={`Delete ${title}`} title="Delete">
-          <Icon name="trash" size={17} />
+        <button type="button" className="icon-btn" onClick={onDelete} aria-label={`Delete ${title ?? playersOf(g)}`} title="Delete">
+          <Icon name="trash" size={16} />
         </button>
       </span>
     </li>
   )
 }
 
-function OpeningTree({ families, selected, onSelect }: {
+function OpeningTree({ families, selected, onSelect, total }: {
   families: OpeningFamily[]
   selected: { family?: string; opening?: string }
   onSelect: (f: { family?: string; opening?: string }) => void
+  total: number
 }) {
   const [open, setOpen] = useState<string | null>(selected.family ?? null)
-  if (families.length === 0) return <p className="muted small">Openings appear here once you have games.</p>
+  if (families.length === 0) return <p className="tree-foot">Openings appear here once you have games.</p>
   return (
-    <ul className="op-tree">
+    <ul className="tree op-tree">
       <li>
-        <button type="button" className={`op-node ${!selected.family ? 'op-on' : ''}`} onClick={() => onSelect({})}>
-          <span>All openings</span>
+        <button type="button" className={`tree-item all ${!selected.family ? 'on' : ''}`} onClick={() => onSelect({})}>
+          <span>All openings</span><span className="cnt">{total}</span>
         </button>
       </li>
+      <li className="tree-sep" aria-hidden="true" />
       {families.map((f) => (
         <li key={f.family}>
           <button
             type="button"
-            className={`op-node ${selected.family === f.family && !selected.opening ? 'op-on' : ''}`}
+            className={`tree-item ${selected.family === f.family && !selected.opening ? 'on' : ''}`}
             aria-expanded={open === f.family}
             onClick={() => {
               setOpen(open === f.family && selected.family === f.family ? null : f.family)
               onSelect({ family: f.family })
             }}
           >
+            <span className="chev"><Icon name={open === f.family ? 'chevd' : 'chev'} size={12} /></span>
             <span className="op-name">{f.family}</span>
-            <span className="op-count">{f.count}</span>
+            <span className="cnt">{f.count}</span>
           </button>
           {open === f.family && (
             <ul className="op-vars">
-              {f.variations.map((v) => (
-                <li key={v.variation}>
-                  <button
-                    type="button"
-                    className={`op-node op-var ${selected.opening === (v.variation === 'Main line' ? f.family : `${f.family}: ${v.variation}`) ? 'op-on' : ''}`}
-                    onClick={() => onSelect({ family: f.family, opening: v.variation === 'Main line' ? f.family : `${f.family}: ${v.variation}` })}
-                  >
-                    <span className="op-name">{v.variation}</span>
-                    <span className="op-count">{v.count}</span>
-                  </button>
-                </li>
-              ))}
+              {f.variations.map((v) => {
+                const key = v.variation === 'Main line' ? f.family : `${f.family}: ${v.variation}`
+                return (
+                  <li key={v.variation}>
+                    <button type="button" className={`tree-item child ${selected.opening === key ? 'on' : ''}`} onClick={() => onSelect({ family: f.family, opening: key })}>
+                      <span className="op-name">{v.variation}</span>
+                      <span className="cnt">{v.count}</span>
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </li>
@@ -117,8 +127,9 @@ function StatsPanel({ filters, title }: { filters: GameFilters; title: string })
   if (!data || data.games === 0) return null
   const max = Math.max(1, ...data.mistakes_by_move.map((m) => m.count))
   return (
-    <section className="panel lib-stats" aria-label="Your results">
-      <h2>{title}</h2>
+    <section className="card lib-stats" aria-label="Your results">
+      <div className="card-head"><h2>{title}</h2><span className="right">{data.games} games · {data.reviewed} reviewed</span></div>
+      <div className="card-body">
       <div className="stat-cols">
         {(['white', 'black'] as const).map((c) => {
           const r = data.by_color[c]
@@ -148,6 +159,7 @@ function StatsPanel({ filters, title }: { filters: GameFilters; title: string })
         </>
       )}
       {data.reviewed === 0 && <p className="muted small">Review some of these games to see where your mistakes happen.</p>}
+      </div>
     </section>
   )
 }
@@ -190,8 +202,8 @@ function ImportGames({ open, onClose, onDone }: { open: boolean; onClose: () => 
           <textarea className="input mono-ish" rows={10} value={pgn} onChange={(e) => setPgn(e.target.value)} spellCheck={false}
             placeholder={'[Event "Club championship"]\n[Date "2026.10.04"]\n[White "You"]\n[Black "Opponent"]\n\n1. d4 Nf6 2. c4 e6 …'} />
         </label>
-        <label className="btn btn-quiet file-btn">
-          <Icon name="file" size={16} /> Open a .pgn file
+        <label className="link-btn file-btn file-link">
+          <Icon name="upload" size={15} /> Open a .pgn file
           <input type="file" accept=".pgn,.txt,text/plain" onChange={async (e) => {
             const f = e.target.files?.[0]
             if (f) setPgn(await f.text())
@@ -214,7 +226,7 @@ function ImportGames({ open, onClose, onDone }: { open: boolean; onClose: () => 
         <p className="muted small">Games already in the library are skipped, so importing the same file twice is safe.</p>
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="row row-end">
-          <button type="button" className="btn btn-quiet" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Adding…' : 'Add to library'}</button>
         </div>
       </form>
@@ -243,6 +255,12 @@ export function LibraryPage() {
   const filters: GameFilters = { ...base, outcome, family: sel.family, opening: sel.opening }
   const games = useLoad(() => api.listGames(filters), [JSON.stringify(filters)])
   const tree = useLoad(() => api.openingTree(base), [JSON.stringify(base)])
+  // Library-wide numbers for the stat tiles and the masthead (not affected by the filters).
+  const overview = useLoad(() => api.openingStats({}), [])
+  const counts = useLoad(async () => {
+    const [g, a] = await Promise.all([api.listGames({ kind: 'game' }, 1), api.listGames({ kind: 'analysis' }, 1)])
+    return { games: g.total, analyses: a.total }
+  }, [])
 
   const grouped = useMemo(() => {
     const out: { month: string; games: GameRow[] }[] = []
@@ -268,6 +286,8 @@ export function LibraryPage() {
       await api.deleteGame(g.id)
       games.reload()
       tree.reload()
+      overview.reload()
+      counts.reload()
     } catch (e) {
       setNotice((e as Error).message)
     }
@@ -276,80 +296,152 @@ export function LibraryPage() {
   const filtered = Boolean(query || color || outcome || kind || since || until || sel.family)
   const total = games.data?.total ?? 0
   const exportHref = api.exportUrl({ ...filters })
+  const families = tree.data?.families ?? []
+  const totals = overview.data
+  const allGames = totals ? totals.by_color.white.games + totals.by_color.black.games : 0
+  const wins = totals ? totals.by_color.white.wins + totals.by_color.black.wins : 0
+  const draws = totals ? totals.by_color.white.draws + totals.by_color.black.draws : 0
+  const losses = totals ? totals.by_color.white.losses + totals.by_color.black.losses : 0
+  const score = allGames ? Math.round(((wins + draws / 2) / allGames) * 100) : null
+  const accs = totals ? [totals.accuracy.white, totals.accuracy.black].filter((v): v is number => v != null) : []
+  const accuracy = accs.length ? accs.reduce((a, b) => a + b, 0) / accs.length : null
+  const topFamily = [...families].sort((a, b) => b.count - a.count)[0]
 
   return (
     <div className="page library-page">
-      <header className="page-head row-between">
-        <div>
-          <h1>Library</h1>
-          <p className="page-sub">Every game and analysis you saved, by date and by opening.</p>
-        </div>
-        <div className="row">
-          <a className="btn btn-quiet" href={exportHref} download>
-            <Icon name="import" size={16} /> Export PGN
-          </a>
-          <button type="button" className="btn btn-primary" onClick={() => setImportOpen(true)}>
-            <Icon name="plus" size={16} /> Add games
-          </button>
-        </div>
-      </header>
+      <Masthead
+        section="Study"
+        page="Library"
+        title="Library"
+        sub={<Meta items={[
+          counts.data ? <span><span className="strong">{counts.data.games} {counts.data.games === 1 ? 'game' : 'games'}</span> and {counts.data.analyses} {counts.data.analyses === 1 ? 'analysis' : 'analyses'}</span> : 'Every game and analysis you saved, by date and by opening.',
+          families.length ? `${families.length} opening ${families.length === 1 ? 'family' : 'families'}` : null,
+        ]} />}
+        actions={
+          <>
+            <a className="btn btn-ghost" href={exportHref} download><Icon name="download" />Export PGN</a>
+            <button type="button" className="btn btn-primary" onClick={() => setImportOpen(true)}><Icon name="plus" />Add games</button>
+          </>
+        }
+      />
       {notice && <p className="notice-bar" role="status">{notice} <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setNotice(null)}><Icon name="close" size={15} /></button></p>}
 
-      <div className="library-layout">
-        <aside className="panel lib-openings" aria-label="Openings">
-          <h2>Openings</h2>
-          <OpeningTree families={tree.data?.families ?? []} selected={sel} onSelect={setSel} />
+      {totals && totals.games > 0 && (
+        <div className="stats-row">
+          <div className="stat">
+            <div className="label">Games with you</div>
+            <div className="value">{allGames} <small>of {totals.games}</small></div>
+            <div className="foot"><span>{counts.data ? `${counts.data.analyses} saved ${counts.data.analyses === 1 ? 'analysis' : 'analyses'} besides` : ''}</span></div>
+          </div>
+          <div className="stat">
+            <div className="label">Score</div>
+            <div className="value">{score ?? '–'}<span className="pct">%</span> <small>{wins} W · {draws} D · {losses} L</small></div>
+            <div className="score-bar" aria-hidden="true">
+              <i className="w" style={{ width: `${allGames ? (wins / allGames) * 100 : 0}%` }} />
+              <i className="d" style={{ width: `${allGames ? (draws / allGames) * 100 : 0}%` }} />
+              <i className="l" style={{ width: `${allGames ? (losses / allGames) * 100 : 0}%` }} />
+            </div>
+          </div>
+          <div className="stat">
+            <div className="label">Accuracy</div>
+            <div className="value">{accuracy != null ? accuracy.toFixed(1) : '–'} <small>of 100</small></div>
+            <div className="foot"><span>{totals.reviewed} reviewed {totals.reviewed === 1 ? 'game' : 'games'}</span></div>
+          </div>
+          <div className="stat">
+            <div className="label">Openings</div>
+            <div className="value">{families.length} <small>{families.length === 1 ? 'family' : 'families'}</small></div>
+            <div className="foot">{topFamily && <span>Most played · <span className="strong">{topFamily.family}</span></span>}</div>
+          </div>
+        </div>
+      )}
+
+      <div className="filters filter-bar">
+        <label className="searchbox lib-search">
+          <Icon name="search" size={15} />
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search players, events, openings, tags" aria-label="Search the library" />
+        </label>
+        <label className="select">
+          <select value={color} onChange={(e) => setColor(e.target.value)} aria-label="Your colour">
+            <option value="">Both colours</option>
+            <option value="white">I had White</option>
+            <option value="black">I had Black</option>
+          </select>
+          <Icon name="chevd" size={13} />
+        </label>
+        <label className="select">
+          <select value={outcome} onChange={(e) => setOutcome(e.target.value)} aria-label="Result">
+            <option value="">Any result</option>
+            <option value="win">Won</option>
+            <option value="draw">Drew</option>
+            <option value="loss">Lost</option>
+          </select>
+          <Icon name="chevd" size={13} />
+        </label>
+        <label className="select">
+          <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Type">
+            <option value="">Games &amp; analyses</option>
+            <option value="game">Games only</option>
+            <option value="analysis">Analyses only</option>
+          </select>
+          <Icon name="chevd" size={13} />
+        </label>
+        <span className="spacer" />
+        <label className="date-field"><span>From</span><input className="input" type="date" value={since} onChange={(e) => setSince(e.target.value)} /></label>
+        <label className="date-field"><span>to</span><input className="input" type="date" value={until} onChange={(e) => setUntil(e.target.value)} /></label>
+        {filtered && (
+          <button type="button" className="btn btn-sm btn-ghost" onClick={() => { setQ(''); setColor(''); setOutcome(''); setKind(''); setSince(''); setUntil(''); setSel({}) }}>
+            <Icon name="close" size={14} />Clear
+          </button>
+        )}
+      </div>
+
+      <div className="library-grid library-layout">
+        <aside className="card openings-card lib-openings" aria-label="Openings">
+          <div className="card-head"><h2>Openings</h2><span className="right">{families.length}</span></div>
+          <OpeningTree families={families} selected={sel} onSelect={setSel} total={counts.data ? counts.data.games + counts.data.analyses : 0} />
+          {families.length > 0 && <p className="tree-foot">Openings are matched by position, so transpositions count.</p>}
         </aside>
 
         <section className="lib-games" aria-label="Games">
-          <div className="filter-bar">
-            <input className="input lib-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
-              placeholder="Search players, events, openings, tags" aria-label="Search the library" />
-            <select className="input" value={color} onChange={(e) => setColor(e.target.value)} aria-label="Your colour">
-              <option value="">Both colours</option>
-              <option value="white">I had White</option>
-              <option value="black">I had Black</option>
-            </select>
-            <select className="input" value={outcome} onChange={(e) => setOutcome(e.target.value)} aria-label="Result">
-              <option value="">Any result</option>
-              <option value="win">Won</option>
-              <option value="draw">Drew</option>
-              <option value="loss">Lost</option>
-            </select>
-            <select className="input" value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Type">
-              <option value="">Games and analyses</option>
-              <option value="game">Games only</option>
-              <option value="analysis">Analyses only</option>
-            </select>
-            <label className="mini-field">From <input className="input" type="date" value={since} onChange={(e) => setSince(e.target.value)} /></label>
-            <label className="mini-field">to <input className="input" type="date" value={until} onChange={(e) => setUntil(e.target.value)} /></label>
-          </div>
-
           {sel.family && <StatsPanel filters={{ ...base, family: sel.family, opening: sel.opening }} title={sel.opening ?? sel.family} />}
 
           {games.error && <p className="form-error" role="alert">{games.error}</p>}
+          {!games.data && !games.error && <div className="skeleton" style={{ height: 280 }} />}
           {games.data && total === 0 && !filtered && (
             <div className="empty-state">
+              <p className="eyebrow">Library</p>
               <h2>Your library is empty</h2>
               <p>Games land here when you review them, save a board from the analysis page, finish a practice game, or add a PGN file.</p>
               <div className="row">
-                <button type="button" className="btn btn-primary" onClick={() => setImportOpen(true)}>Add games from PGN</button>
-                <button type="button" className="btn" onClick={() => navigate('/analysis')}>Go to the analysis board</button>
+                <button type="button" className="btn btn-primary" onClick={() => setImportOpen(true)}><Icon name="plus" />Add games from PGN</button>
+                <button type="button" className="btn" onClick={() => navigate('/analysis')}><Icon name="board" />Go to the analysis board</button>
               </div>
             </div>
           )}
-          {games.data && total === 0 && filtered && <p className="empty">No games match these filters.</p>}
-          {games.data && total > 0 && (
-            <p className="muted small">{total} {total === 1 ? 'entry' : 'entries'}{total > (games.data.games.length) ? `, showing the newest ${games.data.games.length}` : ''}</p>
+          {games.data && total === 0 && filtered && (
+            <div className="card"><div className="card-body"><p className="empty">No games match these filters.</p></div></div>
           )}
-          {grouped.map((group) => (
-            <section key={group.month} className="lib-month">
-              <h3>{group.month}</h3>
-              <ul className="lib-rows">
-                {group.games.map((g) => <GameRowView key={g.id} g={g} onOpen={() => open(g)} onDelete={() => remove(g)} />)}
-              </ul>
-            </section>
-          ))}
+          {games.data && total > 0 && (
+            <div className="card games-card">
+              {grouped.map((group, i) => (
+                <section key={group.month} className="lib-month">
+                  <div className="month-head">
+                    <h3 className="m">{group.month}</h3>
+                    <span className="n">{group.games.length} {group.games.length === 1 ? 'game' : 'games'}</span>
+                    {i === 0 && <span className="sort">Newest first</span>}
+                  </div>
+                  <ul className="game-rows lib-rows">
+                    {group.games.map((g) => <GameRowView key={g.id} g={g} onOpen={() => open(g)} onDelete={() => remove(g)} />)}
+                  </ul>
+                </section>
+              ))}
+              <div className="list-foot">
+                <span>{total} {total === 1 ? 'entry' : 'entries'}{total > games.data.games.length ? `, showing the newest ${games.data.games.length}` : ''}</span>
+                <span className="spacer" />
+                <span className="dim">Click a game to open it on the board</span>
+              </div>
+            </div>
+          )}
         </section>
       </div>
 
@@ -357,6 +449,8 @@ export function LibraryPage() {
         setNotice(msg)
         games.reload()
         tree.reload()
+        overview.reload()
+        counts.reload()
       }} />
     </div>
   )

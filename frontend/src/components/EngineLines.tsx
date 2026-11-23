@@ -36,17 +36,17 @@ export function EngineLines({ info, multipv, on, threat, error, onPlay }: Props)
         <p className="threat-note">Threat: what {turnOf(info.fen) === 'white' ? 'White' : 'Black'} would play if it were their move.</p>
       )}
       <ol className="lines">
-        {rows.map((line) => {
+        {rows.map((line, i) => {
           const tokens = numberedLine(info!.fen, line.san)
           return (
-            <li key={line.multipv} className="line">
+            <li key={line.multipv} className={`line ${i === 0 && !threat ? 'best' : ''}`}>
               <span className={`line-eval side-${evalSide(line.eval)}`}>{formatEval(line.eval)}</span>
               <span className="line-moves">
                 {tokens.map((t) => (
                   <button
                     type="button"
                     key={t.index}
-                    className="pv-move"
+                    className={`pv-move ${t.index === 0 ? 'pv-first' : ''}`}
                     disabled={threat}
                     onClick={() => onPlay(line.uci.slice(0, t.index + 1))}
                     title={threat ? undefined : 'Play the line up to this move'}
@@ -66,9 +66,9 @@ export function EngineLines({ info, multipv, on, threat, error, onPlay }: Props)
           </li>
         ))}
       </ol>
-      <p className="engine-stats">
+      <p className="engine-stats engine-foot">
         {info?.depth ? <>Depth {info.depth}{info.seldepth ? `/${info.seldepth}` : ''}</> : 'Thinking…'}
-        {info?.nps ? <span>{formatNodes(info.nps)}</span> : null}
+        {info?.nps ? <span>{formatNodes(info.nps)}</span> : <span>MultiPV {multipv}</span>}
       </p>
     </div>
   )

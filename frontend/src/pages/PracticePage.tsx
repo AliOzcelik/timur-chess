@@ -9,13 +9,15 @@ import { useLoad } from '../hooks/useLoad'
 import { useOpening } from '../hooks/useOpening'
 import { api, type Puzzle, type PuzzleCheck, type RepEdge, type Side } from '../lib/api'
 import { START_FEN, numberedLine, playUci, turnOf, uciSquares } from '../lib/chess'
-import { openPositionOnBoard } from '../lib/open'
+import { openGameOnBoard, openPositionOnBoard } from '../lib/open'
 import { navigate } from '../lib/router'
 import { createTree, addMove, toPgn } from '../lib/tree'
 import { useAnalysis } from '../state/analysis'
 import { useHealth } from '../state/health'
 import { progressLabel } from './EndgamesPage'
-import { formatPgnDate } from './ReviewListPage'
+import { formatDate, formatPgnDate } from '../lib/format'
+import { BoardShell, PlayerStrip } from '../components/BoardShell'
+import { Masthead } from '../components/Masthead'
 
 interface Ply {
   uci: string
@@ -131,83 +133,174 @@ function PlayTab() {
     }
   }
 
+  const level = LEVELS.find((l) => l.elo === elo) ?? LEVELS[1]
+  const botName = elo ? `Stockfish · ${elo}` : 'Stockfish 19'
+
   if (setup) {
     return (
-      <div className="play-setup-layout">
-      <div className="panel play-setup">
-        <h2>New game against Stockfish</h2>
-        <fieldset className="choice-group">
-          <legend>You play</legend>
-          <label><input type="radio" name="pc" checked={color === 'white'} onChange={() => setColor('white')} /> White</label>
-          <label><input type="radio" name="pc" checked={color === 'black'} onChange={() => setColor('black')} /> Black</label>
-        </fieldset>
-        <fieldset className="choice-group ladder">
-          <legend>Strength</legend>
-          {[...LEVELS].reverse().map((l) => (
-            <label key={l.elo} className={elo === l.elo ? 'is-on' : undefined}>
-              <input type="radio" name="lvl" checked={elo === l.elo} onChange={() => setElo(l.elo)} />
-              <span className="ladder-name">{l.label}</span>
-              <span className="ladder-detail">{l.detail}</span>
-            </label>
-          ))}
-        </fieldset>
-        <fieldset className="choice-group">
-          <legend>Start from</legend>
-          <label><input type="radio" name="st" checked={start === START_FEN} onChange={() => setStart(START_FEN)} /> The starting position</label>
-          <label>
-            <input type="radio" name="st" checked={start !== START_FEN} onChange={() => {
-              const { tree, currentId } = useAnalysis.getState()
-              setStart(tree.nodes[currentId].fen)
-            }} /> The position on the analysis board
-          </label>
-        </fieldset>
-        <p className="muted small">Strength uses Stockfish’s own rating limiter, which is calibrated against human-like play at long time controls.</p>
-        <button type="button" className="btn btn-primary" onClick={begin}>Start the game</button>
-      </div>
-      <figure className="play-preview">
-        <MiniBoard fen={start} orientation={color} label={`Starting position, seen from ${color}`} />
-        <figcaption>
-          You play {color === 'white' ? 'White' : 'Black'} against Stockfish {elo ? `rated about ${elo}` : 'at full strength'}
-          {start === START_FEN ? ', from the starting position.' : ', from the analysis board position.'}
-        </figcaption>
-      </figure>
+      <div className="practice-grid">
+        <div className="setup-stack">
+          <section className="card setup-card" aria-labelledby="setup-title">
+            <h2 className="setup-title" id="setup-title">New game against Stockfish</h2>
+            <p className="setup-sub">Set the table before you begin. You can leave at any point.</p>
+
+            <div className="section-label" id="pc-label">You play</div>
+            <div className="side-cards" role="radiogroup" aria-labelledby="pc-label">
+              {(['white', 'black'] as const).map((c) => (
+                <button key={c} type="button" role="radio" aria-checked={color === c} className={`side-card cg-wrap ${color === c ? 'on' : ''}`} onClick={() => setColor(c)}>
+                  <span className="piece-icon"><piece className={`king ${c}`} /></span>
+                  <span><span className="t">{c === 'white' ? 'White' : 'Black'}</span><span className="s">{c === 'white' ? 'First move' : 'Second move'}</span></span>
+                  <span className="radio" aria-hidden="true" />
+                </button>
+              ))}
+            </div>
+
+            <div className="section-label" id="lvl-label">Strength</div>
+            <div className="ladder" role="radiogroup" aria-labelledby="lvl-label">
+              {[...LEVELS].reverse().map((l, i, all) => {
+                const bars = Math.max(1, Math.ceil(((all.length - i) / all.length) * 3))
+                return (
+                  <button key={l.elo} type="button" role="radio" aria-checked={elo === l.elo} className={`rung ${elo === l.elo ? 'on' : ''}`} onClick={() => setElo(l.elo)}>
+                    <span className="radio" aria-hidden="true" />
+                    <span className="lvl">{l.label}</span>
+                    <span className="right">
+                      <span className="elo">{l.detail}</span>
+                      <span className="bars" aria-hidden="true">{[0, 1, 2].map((b) => <i key={b} className={b < bars ? 'f' : undefined} />)}</span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="section-label">Start from</div>
+            <div className="row start-from">
+              <button type="button" className={`chip ${start === START_FEN ? 'on' : ''}`} aria-pressed={start === START_FEN} onClick={() => setStart(START_FEN)}>The starting position</button>
+              <button type="button" className={`chip ${start !== START_FEN ? 'on' : ''}`} aria-pressed={start !== START_FEN} onClick={() => {
+                const { tree, currentId } = useAnalysis.getState()
+                setStart(tree.nodes[currentId].fen)
+              }}>Position on the analysis board</button>
+            </div>
+
+            <div className="start-row">
+              <button type="button" className="btn btn-primary btn-lg" onClick={begin}><Icon name="play" />Start the game</button>
+              <span className="start-note">Stockfish’s rating limiter is calibrated against human play at long time controls.</span>
+            </div>
+          </section>
+          <RecentGames />
+        </div>
+
+        <div className="preview-col">
+          <figure className="preview-frame">
+            <div className="mini-board-big"><MiniBoard fen={start} orientation={color} label={`Starting position, seen from ${color}`} /></div>
+            <figcaption className="preview-cap">
+              You play <b>{color === 'white' ? 'White' : 'Black'}</b> against Stockfish {elo ? <>rated about <b>{elo}</b></> : <b>at full strength</b>}
+              {start === START_FEN ? ', from the starting position.' : ', from the analysis board position.'}
+            </figcaption>
+          </figure>
+          <PracticeStats />
+        </div>
       </div>
     )
   }
 
+  const other = color === 'white' ? 'black' : 'white'
+  const turn = turnOf(fen)
   return (
-    <div className="analysis-layout">
-      <section className="board-column" aria-label="Board">
-        <div className="board-area no-bar">
+    <div className="analysis-grid practice-play">
+      <section className="board-col" aria-label="Board">
+        <BoardShell
+          top={<PlayerStrip position="top" name={botName} rating={elo ? level.label : null} side={other} toMove={turn === other && !over} />}
+          bottom={<PlayerStrip position="bottom" name="You" side={color} toMove={turn === color && !over} />}
+        >
           <Board fen={fen} orientation={color} lastMove={uciSquares(plies[plies.length - 1]?.uci) as [Key, Key] | undefined}
             movable={myTurn ? 'turn' : null} onMove={play} />
-        </div>
+        </BoardShell>
         <div className="board-toolbar" role="toolbar" aria-label="Game actions">
-          <button type="button" className="tool" onClick={resign} disabled={Boolean(over)}><Icon name="close" /> <span>Resign</span></button>
-          <button type="button" className="tool" onClick={() => setSetup(true)}><Icon name="plus" /> <span>New game</span></button>
+          <button type="button" className="tool" onClick={resign} disabled={Boolean(over)}><Icon name="flag" /><span>Resign</span></button>
+          <button type="button" className="tool" onClick={() => setSetup(true)}><Icon name="plus" /><span>New game</span></button>
+          <div className="tool-right">
+            <button type="button" className="tool" onClick={() => openPositionOnBoard(fen, color)}><Icon name="board" /><span>Analyse this position</span></button>
+          </div>
         </div>
       </section>
-      <aside className="side-panel">
-        <section className="panel">
-          <h2>{LEVELS.find((l) => l.elo === elo)?.label ?? 'Stockfish'}</h2>
-          {opening && <p className="small"><span className="eco">{opening.eco}</span> {opening.name}</p>}
-          <p role="status" aria-live="polite">
-            {over ? <strong>Game over: {over.result}, {over.reason}.</strong> : thinking ? 'Stockfish is thinking…' : myTurn ? 'Your move.' : ''}
-          </p>
-          {error && <p className="form-error" role="alert">{error}</p>}
-          {over && (
-            <div className="row">
-              <button type="button" className="btn btn-primary" onClick={() => finish(true)}>Review this game</button>
-              <button type="button" className="btn" onClick={() => finish(false)}>Save to library</button>
-            </div>
-          )}
-          {saved && <p className="muted small">{saved}</p>}
+      <aside className="inspector" aria-label="Game">
+        <section className="card play-card">
+          <div className="card-body">
+            <p className="eyebrow">Against <span className="sep">/</span> <span className="quiet">{level.label}</span></p>
+            <p className="play-state" role="status" aria-live="polite">
+              {over ? <>Game over: {over.result}, {over.reason}.</> : thinking ? <><span className="spinner" aria-hidden="true" />Stockfish is thinking…</> : myTurn ? 'Your move.' : ''}
+            </p>
+            {opening && <p className="small muted"><span className="eco">{opening.eco}</span> {opening.name}</p>}
+            {error && <p className="form-error" role="alert">{error}</p>}
+            {over && (
+              <div className="row">
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => finish(true)}><Icon name="review" />Review this game</button>
+                <button type="button" className="btn btn-sm" onClick={() => finish(false)}><Icon name="save" />Save to library</button>
+              </div>
+            )}
+            {saved && <p className="muted small">{saved}</p>}
+          </div>
         </section>
-        <section className="panel">
-          <h2>Moves</h2>
-          <MoveText start={start} plies={plies} />
+        <section className="card moves-card">
+          <div className="card-head"><h2 className="card-title">Moves</h2><span className="muted small">{plies.length} plies</span></div>
+          <div className="card-body"><MoveText start={start} plies={plies} /></div>
         </section>
       </aside>
+    </div>
+  )
+}
+
+/** The last few games played against the engine, from the library. */
+function RecentGames() {
+  const { data } = useLoad(() => api.listGames({}, 200), [])
+  const games = (data?.games ?? []).filter((g) => g.source === 'play').slice(0, 4)
+  if (!games.length) return null
+  return (
+    <section className="card recent-card">
+      <div className="card-head"><h2 className="card-title">Recent games</h2><span className="right">Against the engine</span></div>
+      <div>
+        {games.map((g) => {
+          const me = g.my_color
+          const opp = me === 'white' ? g.black : g.white
+          const outcome = !g.result || g.result === '*' ? null : g.result === '1/2-1/2' ? 'd' : (g.result === '1-0') === (me === 'white') ? 'w' : 'l'
+          const acc = me === 'white' ? g.white_accuracy : me === 'black' ? g.black_accuracy : null
+          return (
+            <a key={g.id} className="recent-row" href={g.review_id ? `#/review/${g.review_id}` : '#/analysis'}
+              onClick={g.review_id ? undefined : (e) => { e.preventDefault(); openGameOnBoard(g.id) }}>
+              <span className={`res ${outcome ?? 'd'}`}>{outcome === 'w' ? '1' : outcome === 'l' ? '0' : '½'}</span>
+              <span className="who">vs {opp ?? 'Stockfish'}</span>
+              <span className="meta">{Math.ceil(g.ply_count / 2)} moves · {formatDate(g.created_at)}</span>
+              <span className="acc" title="Your accuracy">{acc != null ? Math.round(acc) : '–'}</span>
+            </a>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function PracticeStats() {
+  const { data } = useLoad(async () => {
+    const [games, puzzles] = await Promise.all([api.listGames({}, 200), api.training('puzzle')])
+    const weekAgo = Date.now() - 7 * 86_400_000
+    const week = games.games.filter((g) => g.source === 'play' && new Date(g.created_at).getTime() >= weekAgo)
+    const won = week.filter((g) => g.result && g.result !== '1/2-1/2' && (g.result === '1-0') === (g.my_color === 'white')).length
+    const lost = week.filter((g) => g.result && g.result !== '1/2-1/2' && g.result !== '*' && (g.result === '1-0') !== (g.my_color === 'white')).length
+    return { week: week.length, won, lost, due: puzzles.due }
+  }, [])
+  if (!data) return null
+  return (
+    <div className="practice-stats">
+      <div className="stat">
+        <div className="label">This week</div>
+        <div className="value">{data.week} <small>game{data.week === 1 ? '' : 's'}</small></div>
+        <div className="foot">{data.week ? <><span className="good">{data.won} won</span><span>·</span><span>{data.lost} lost</span></> : <span>Against the engine</span>}</div>
+      </div>
+      <a className="stat stat-link" href="#/practice/puzzles">
+        <div className="label">Puzzles due</div>
+        <div className="value">{data.due}</div>
+        <div className="foot"><span>From your reviewed games</span></div>
+      </a>
     </div>
   )
 }
@@ -282,68 +375,77 @@ function PuzzlesTab() {
   if (!tried && played && revealed) shapes.push({ orig: played[0], dest: played[1], brush: 'red' })
   const prog = progressLabel(p.progress)
 
+  const other = p.color === 'white' ? 'black' : 'white'
   return (
-    <div className="analysis-layout">
-      <section className="board-column" aria-label="Puzzle board">
-        <div className="board-area no-bar">
+    <div className="analysis-grid practice-puzzles">
+      <section className="board-col" aria-label="Puzzle board">
+        <BoardShell
+          top={<PlayerStrip position="top" name={(p.color === 'white' ? p.black : p.white) ?? null} side={other} />}
+          bottom={<PlayerStrip position="bottom" name={(p.color === 'white' ? p.white : p.black) ?? 'You'} side={p.color} toMove={!tried && !revealed} />}
+        >
           <Board fen={revealed ? p.fen : shown} orientation={p.color}
             lastMove={uciSquares(tried?.uci) as [Key, Key] | undefined}
             movable={!tried && !revealed ? 'turn' : null} shapes={shapes} onMove={attempt} />
-        </div>
+        </BoardShell>
         <div className="board-toolbar" role="toolbar" aria-label="Puzzle actions">
-          <button type="button" className="tool" disabled={index === 0} onClick={() => setIndex(index - 1)}><Icon name="prev" /> <span>Previous</span></button>
-          <button type="button" className="tool" disabled={index + 1 >= puzzles.length} onClick={() => setIndex(index + 1)}><Icon name="next" /> <span>Next puzzle</span></button>
-          <button type="button" className="tool" onClick={() => openPositionOnBoard(p.fen, p.color)}><Icon name="board" /> <span>Analyse</span></button>
+          <button type="button" className="tool" disabled={index === 0} onClick={() => setIndex(index - 1)}><Icon name="prev" /><span>Previous</span></button>
+          <button type="button" className="tool" disabled={index + 1 >= puzzles.length} onClick={() => setIndex(index + 1)}><Icon name="next" /><span>Next puzzle</span></button>
+          <div className="tool-right">
+            <button type="button" className="tool" onClick={() => openPositionOnBoard(p.fen, p.color)}><Icon name="board" /><span>Analyse</span></button>
+          </div>
         </div>
       </section>
-      <aside className="side-panel">
-        <section className="panel">
-          <div className="row-between">
+      <aside className="inspector" aria-label="Puzzle">
+        <section className="card puzzle-card">
+          <div className="card-head">
             <span className="muted small">Puzzle {index + 1} of {puzzles.length}</span>
-            <label className="switch">
+            <label className="switch right">
               <input type="checkbox" checked={onlyEndgames} onChange={(e) => { setOnlyEndgames(e.target.checked); setIndex(0) }} />
               <span className="switch-track" aria-hidden="true" />
               <span className="small">Endgames only</span>
             </label>
           </div>
-          <h2>{p.color === 'white' ? 'White' : 'Black'} to move</h2>
-          <p>
-            In your game {p.white ?? '?'} vs {p.black ?? '?'}{p.date && formatPgnDate(p.date) ? ` (${formatPgnDate(p.date)})` : ''}, you played
-            {' '}<strong>{p.move_number}{p.color === 'white' ? '.' : '...'} {p.played.san}</strong>, a {p.classification}. Find a better move.
-          </p>
-          {p.opening && <p className="muted small"><span className="eco">{p.eco}</span> {p.opening}</p>}
-          <span className={`prog ${prog.cls}`}>{prog.text}</span>
+          <div className="card-body">
+            <p className="eyebrow">Find a better move <span className="sep">/</span> <span className={`quiet prog-text ${prog.cls}`}>{prog.text}</span></p>
+            <h2 className="goal-text">{p.color === 'white' ? 'White' : 'Black'} to move</h2>
+            <p className="puzzle-story">
+              In your game {p.white ?? '?'} vs {p.black ?? '?'}{p.date && formatPgnDate(p.date) ? ` (${formatPgnDate(p.date)})` : ''}, you played
+              {' '}<strong>{p.move_number}{p.color === 'white' ? '.' : '...'} {p.played.san}</strong>, a {p.classification}.
+            </p>
+            {p.opening && <p className="muted small"><span className="eco">{p.eco}</span> {p.opening}</p>}
+          </div>
 
-          <div className="drill-status" role="status" aria-live="polite">
-            {checking && <p className="muted">Checking…</p>}
+          <div className={`drill-status ${result?.correct ? 'is-good' : result && !revealed ? 'is-bad' : ''}`} role="status" aria-live="polite">
+            {checking && <p className="drill-msg"><span className="spinner" aria-hidden="true" />Checking…</p>}
+            {!checking && !tried && !revealed && <p className="drill-msg">Your move.</p>}
             {result?.correct && (
-              <div className="drill-result drill-good">
-                <p><strong>{result.exact ? `Yes: ${result.san} is the engine’s move.` : `${result.san} works too: it keeps the advantage.`}</strong></p>
+              <>
+                <p className="drill-msg"><strong>{result.exact ? `Yes: ${result.san} is the engine’s move.` : `${result.san} works too: it keeps the advantage.`}</strong></p>
                 {p.best_line_san.length > 0 && <p className="muted small">Engine line: {p.best_line_san.join(' ')}</p>}
-                {index + 1 < puzzles.length && <button type="button" className="btn btn-primary" onClick={() => setIndex(index + 1)}>Next puzzle</button>}
-              </div>
+                {index + 1 < puzzles.length && <div className="row"><button type="button" className="btn btn-primary btn-sm" onClick={() => setIndex(index + 1)}><Icon name="next" />Next puzzle</button></div>}
+              </>
             )}
             {result && !result.correct && !revealed && (
-              <div className="drill-result drill-bad">
-                <p><strong>{result.san} is not it.</strong> It loses about {Math.round(result.loss)} points of winning chance.</p>
+              <>
+                <p className="drill-msg"><span><strong>{result.san} is not it.</strong> It loses about {Math.round(result.loss)} points of winning chance.</span></p>
                 {result.reply_line && result.reply_line.length > 0 && <p className="muted small">After {result.san}: {result.reply_line.join(' ')}</p>}
                 <div className="row">
-                  <button type="button" className="btn btn-primary" onClick={retry}>Try again</button>
-                  <button type="button" className="btn" onClick={() => setRevealed(true)}>Show the answer</button>
+                  <button type="button" className="btn btn-primary btn-sm" onClick={retry}><Icon name="retry" />Try again</button>
+                  <button type="button" className="btn btn-sm" onClick={() => setRevealed(true)}>Show the answer</button>
                 </div>
-              </div>
+              </>
             )}
             {revealed && (
-              <div className="drill-result">
-                <p>The move was <strong>{p.best.san}</strong>. {p.explanation}</p>
+              <>
+                <p className="drill-msg"><span>The move was <strong>{p.best.san}</strong>. {p.explanation}</span></p>
                 {p.best_line_san.length > 0 && <p className="muted small">Line: {p.best_line_san.join(' ')}</p>}
                 <div className="row">
-                  {index + 1 < puzzles.length && <button type="button" className="btn btn-primary" onClick={() => setIndex(index + 1)}>Next puzzle</button>}
-                  <a className="btn" href={`#/review/${p.review_id}`}>See the game review</a>
+                  {index + 1 < puzzles.length && <button type="button" className="btn btn-primary btn-sm" onClick={() => setIndex(index + 1)}><Icon name="next" />Next puzzle</button>}
+                  <a className="btn btn-sm" href={`#/review/${p.review_id}`}>See the game review</a>
                 </div>
-              </div>
+              </>
             )}
-            {!tried && !revealed && <button type="button" className="btn btn-small btn-quiet" onClick={() => setRevealed(true)}>Give up and show the answer</button>}
+            {!tried && !revealed && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setRevealed(true)}>Give up and show the answer</button>}
             {error && <p className="form-error" role="alert">{error}</p>}
           </div>
         </section>
@@ -493,70 +595,84 @@ function RepertoireTab() {
   const mine = edges.filter((e) => e.progress).length
   const dueCount = edges.filter((e) => e.progress?.due).length
 
+  const other = color === 'white' ? 'black' : 'white'
   return (
-    <div className="analysis-layout">
-      <section className="board-column" aria-label="Repertoire board">
-        <div className="board-area no-bar">
+    <div className="analysis-grid practice-rep">
+      <section className="board-col" aria-label="Repertoire board">
+        <BoardShell
+          top={<PlayerStrip position="top" name="Opponent" side={other} toMove={!myTurn} />}
+          bottom={<PlayerStrip position="bottom" name="You" side={color} toMove={myTurn} />}
+        >
           <Board fen={fen} orientation={color} lastMove={uciSquares(path[path.length - 1]?.ply.uci) as [Key, Key] | undefined}
             movable={busy || (mode === 'train' && !myTurn) ? null : 'turn'} shapes={shapes} onMove={onMove} />
-        </div>
+        </BoardShell>
         <div className="board-toolbar" role="toolbar" aria-label="Repertoire actions">
           <button type="button" className="tool" onClick={() => { trainRef.current++; setPath(path.slice(0, -1)); setWrong(null) }} disabled={!path.length}>
-            <Icon name="prev" /> <span>Back</span>
+            <Icon name="prev" /><span>Back</span>
           </button>
           <button type="button" className="tool" onClick={() => (mode === 'train' ? startTraining() : setPath([]))}>
-            <Icon name="first" /> <span>{mode === 'train' ? 'Start over' : 'Start position'}</span>
+            <Icon name="first" /><span>{mode === 'train' ? 'Start over' : 'Start position'}</span>
           </button>
-          <button type="button" className="tool" onClick={() => setImportOpen(true)}><Icon name="import" /> <span>Import PGN</span></button>
-          <button type="button" className="tool" onClick={exportPgn} disabled={!edges.length}><Icon name="copy" /> <span>Copy as PGN</span></button>
+          <div className="tool-right">
+            <button type="button" className="tool" onClick={() => setImportOpen(true)}><Icon name="import" /><span>Import PGN</span></button>
+            <button type="button" className="tool" onClick={exportPgn} disabled={!edges.length}><Icon name="copy" /><span>Copy as PGN</span></button>
+          </div>
         </div>
       </section>
-      <aside className="side-panel">
-        <section className="panel">
-          <div className="row-between">
+      <aside className="inspector" aria-label="Repertoire">
+        <section className="card rep-card">
+          <div className="card-head rep-head">
             <div className="seg" role="tablist" aria-label="Repertoire colour">
               <button type="button" role="tab" aria-selected={color === 'white'} className={color === 'white' ? 'seg-on' : ''} onClick={() => setColor('white')}>As White</button>
               <button type="button" role="tab" aria-selected={color === 'black'} className={color === 'black' ? 'seg-on' : ''} onClick={() => setColor('black')}>As Black</button>
             </div>
-            <div className="seg" role="tablist" aria-label="Mode">
+            <div className="seg right" role="tablist" aria-label="Mode">
               <button type="button" role="tab" aria-selected={mode === 'build'} className={mode === 'build' ? 'seg-on' : ''} onClick={() => setMode('build')}>Build</button>
               <button type="button" role="tab" aria-selected={mode === 'train'} className={mode === 'train' ? 'seg-on' : ''} onClick={() => setMode('train')} disabled={!edges.length}>Train</button>
             </div>
           </div>
-          {opening && <p className="small"><span className="eco">{opening.eco}</span> {opening.name}</p>}
-          {mode === 'build' ? (
-            <>
-              <p className="muted small">
-                Play moves on the board to add them: your move in each position, and the opponent replies you want to be ready for.
-                {offBook && ' You left your repertoire; moves here are not saved. Go back to add a move.'}
-              </p>
-              {here.length > 0 ? (
-                <ul className="rep-moves">
-                  {here.map((e) => (
-                    <li key={e.id}>
-                      <button type="button" className="mv-btn" onClick={() => push(e.uci, e)}>{e.san}</button>
-                      <span className="muted small">{myTurn ? 'your move' : 'their reply'}{e.opening ? `, ${e.opening.name}` : ''}</span>
-                      <button type="button" className="icon-btn" onClick={() => removeEdge(e)} aria-label={`Remove ${e.san}`}><Icon name="trash" size={15} /></button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                !offBook && <p className="small">{myTurn ? 'Play the move you want in this position.' : 'Play the opponent replies you expect.'}</p>
-              )}
-            </>
-          ) : (
-            <p className="muted small">Timur plays the opponent’s moves from your repertoire, picking at random. Play your prepared answer.</p>
-          )}
-          {message && <p role="status" className={wrong ? 'form-error' : ''}>{message}</p>}
+          <div className="card-body">
+            {opening ? <p className="rep-opening"><span className="eco">{opening.eco}</span> {opening.name}</p> : <p className="rep-opening muted">Starting position</p>}
+            {mode === 'build' ? (
+              <>
+                <p className="muted small">
+                  Play moves on the board to add them: your move in each position, and the opponent replies you want to be ready for.
+                  {offBook && ' You left your repertoire; moves here are not saved. Go back to add a move.'}
+                </p>
+                {here.length > 0 ? (
+                  <ul className="rep-moves">
+                    {here.map((e) => (
+                      <li key={e.id}>
+                        <button type="button" className="mv-btn" onClick={() => push(e.uci, e)}>{e.san}</button>
+                        <span className="muted small">{myTurn ? 'your move' : 'their reply'}{e.opening ? `, ${e.opening.name}` : ''}</span>
+                        <button type="button" className="icon-btn" onClick={() => removeEdge(e)} aria-label={`Remove ${e.san}`}><Icon name="trash" size={15} /></button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  !offBook && <p className="small rep-prompt">{myTurn ? 'Play the move you want in this position.' : 'Play the opponent replies you expect.'}</p>
+                )}
+              </>
+            ) : (
+              <p className="muted small">Timur plays the opponent’s moves from your repertoire, picking at random. Play your prepared answer.</p>
+            )}
+            {message && <p role="status" className={wrong ? 'form-error' : 'rep-message'}>{message}</p>}
+          </div>
         </section>
-        <section className="panel">
-          <h2>Your {color} repertoire</h2>
-          {edges.length === 0 ? (
-            <p className="empty">Empty. Start by playing your first move on the board, or import a PGN with your lines (variations included).</p>
-          ) : (
-            <p className="small">{edges.length} moves saved. {mine} trained, {dueCount} due for review.</p>
-          )}
-          <MoveText start={START_FEN} plies={path.map((p) => p.ply)} />
+        <section className="card">
+          <div className="card-head"><h2 className="card-title"><Icon name="book" />Your {color} repertoire</h2></div>
+          <div className="card-body">
+            {edges.length === 0 ? (
+              <p className="empty">Empty. Start by playing your first move on the board, or import a PGN with your lines (variations included).</p>
+            ) : (
+              <div className="rep-stats">
+                <div><b>{edges.length}</b><span>moves saved</span></div>
+                <div><b>{mine}</b><span>trained</span></div>
+                <div><b className={dueCount ? 'warn' : undefined}>{dueCount}</b><span>due</span></div>
+              </div>
+            )}
+            <MoveText start={START_FEN} plies={path.map((p) => p.ply)} />
+          </div>
         </section>
       </aside>
       <Modal title={`Import ${color} repertoire`} open={importOpen} onClose={() => setImportOpen(false)} wide>
@@ -578,19 +694,41 @@ const TABS = [
   { id: 'repertoire', label: 'Opening repertoire' },
 ]
 
+/** Counts for the tab labels: puzzles waiting and moves in the repertoire. */
+function useTabCounts() {
+  const { data } = useLoad(async () => {
+    const [pz, w, b] = await Promise.all([
+      api.puzzles().catch(() => null),
+      api.repertoire('white').catch(() => null),
+      api.repertoire('black').catch(() => null),
+    ])
+    return { puzzles: pz?.total ?? 0, repertoire: (w?.edges.length ?? 0) + (b?.edges.length ?? 0) }
+  }, [])
+  return data
+}
+
 export function PracticePage({ tab }: { tab: string }) {
   const current = TABS.some((t) => t.id === tab) ? tab : 'play'
   const trainer = useHealth((h) => h.health?.engines.trainer)
+  const counts = useTabCounts()
   return (
     <div className="page practice-page">
-      <header className="page-head">
-        <h1>Practice</h1>
-        <p className="page-sub">Play at your level, solve the positions you got wrong, and drill your openings.</p>
-      </header>
+      <Masthead
+        section="Train"
+        page="Practice"
+        title="Practice"
+        sub={<span>Play at your level, solve positions from your own games, drill your openings.</span>}
+        actions={<a className="btn btn-ghost" href="#/library"><Icon name="library" />View library</a>}
+      />
       <nav className="tabs" aria-label="Practice">
-        {TABS.map((t) => (
-          <a key={t.id} href={`#/practice/${t.id}`} className="tab" aria-current={current === t.id ? 'page' : undefined}>{t.label}</a>
-        ))}
+        {TABS.map((t) => {
+          const n = t.id === 'puzzles' ? counts?.puzzles : t.id === 'repertoire' ? counts?.repertoire : undefined
+          return (
+            <a key={t.id} href={`#/practice/${t.id}`} className="tab" aria-current={current === t.id ? 'page' : undefined}>
+              {t.label}{n ? <span className="n">{n}</span> : null}
+            </a>
+          )
+        })}
       </nav>
       {trainer?.error && <p className="form-error">{trainer.error}</p>}
       {current === 'play' && <PlayTab />}
@@ -599,4 +737,3 @@ export function PracticePage({ tab }: { tab: string }) {
     </div>
   )
 }
-

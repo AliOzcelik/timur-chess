@@ -24,6 +24,8 @@ def defaults() -> dict[str, Any]:
         "default_profile": "standard",
         "thresholds": {"inaccuracy": 5.0, "mistake": 10.0, "blunder": 15.0},
         "theme": "system",  # system | dark | light
+        "accent": "brass",  # brass | ember | amethyst | cobalt: the UI's attention colour
+        "board": "walnut",  # walnut | slate | moss | rosewood: the two square colours
         "allow_internet": False,  # only for downloading an opponent's public games
         "player_names": [],  # your names in PGN headers, to know which side you played
         "onboarded": False,

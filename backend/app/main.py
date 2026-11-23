@@ -84,7 +84,8 @@ async def health() -> dict[str, Any]:
         "review_profiles": PROFILES,
         "tablebases": tablebases.status(),
         "openings": len(openings.index()),
-        "settings": {"theme": settings.get("theme"), "onboarded": settings.get("onboarded"),
+        "settings": {"theme": settings.get("theme"), "accent": settings.get("accent"),
+                     "board": settings.get("board"), "onboarded": settings.get("onboarded"),
                      "default_profile": settings.get("default_profile")},
     }
 
@@ -235,6 +236,13 @@ async def delete_review(review_id: int) -> dict[str, Any]:
 
 
 # ---- web UI ------------------------------------------------------------------------------
+
+# The new design is a static, self-contained preview served from design/.
+# It is mounted before the SPA so /design/... is not swallowed by the app's
+# single-page fallback. The working app remains at /.
+_design_dir = config.ROOT / "design"
+if _design_dir.is_dir():
+    app.mount("/design", StaticFiles(directory=_design_dir, html=True), name="design")
 
 if (config.FRONTEND_DIST / "index.html").exists():
     app.mount("/", StaticFiles(directory=config.FRONTEND_DIST, html=True), name="ui")

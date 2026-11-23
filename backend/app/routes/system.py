@@ -41,6 +41,8 @@ class SettingsIn(BaseModel):
     default_profile: Literal["quick", "standard", "deep"] | None = None
     thresholds: Thresholds | None = None
     theme: Literal["system", "dark", "light"] | None = None
+    accent: Literal["brass", "ember", "amethyst", "cobalt"] | None = None
+    board: Literal["walnut", "slate", "moss", "rosewood"] | None = None
     allow_internet: bool | None = None
     player_names: list[str] | None = Field(None, max_length=20)
     onboarded: bool | None = None

@@ -1,26 +1,137 @@
 import { useEffect, useState } from 'react'
 import { Icon } from '../components/Icon'
+import { Masthead, Meta } from '../components/Masthead'
+import { MiniBoard } from '../components/MiniBoard'
 import { useLoad } from '../hooks/useLoad'
-import { api, type AppSettings, type Backup, type SettingsView } from '../lib/api'
-import { applyTheme } from '../state/theme'
+import { api, type Accent, type AppSettings, type Backup, type BoardPalette, type SettingsView, type Theme } from '../lib/api'
+import { formatDate } from '../lib/format'
+import { applyAppearance } from '../state/theme'
 import { useHealth } from '../state/health'
-import { formatDate } from './ReviewListPage'
+import { toast } from '../state/toast'
 
 function size(bytes: number): string {
   return bytes > 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1000))} KB`
 }
 
+const SECTIONS = [
+  { id: 'you', label: 'You', icon: 'people' },
+  { id: 'appearance', label: 'Appearance', icon: 'grid' },
+  { id: 'review', label: 'Game review', icon: 'review' },
+  { id: 'engine', label: 'Engine', icon: 'settings' },
+  { id: 'tablebases', label: 'Tablebases', icon: 'endgame' },
+  { id: 'internet', label: 'Internet', icon: 'link' },
+  { id: 'backups', label: 'Backups', icon: 'save' },
+]
+
+const MODES: { id: Theme; label: string }[] = [
+  { id: 'dark', label: 'Dark' },
+  { id: 'light', label: 'Light' },
+  { id: 'system', label: 'System' },
+]
+const ACCENTS: { id: Accent; label: string; sw: string }[] = [
+  { id: 'brass', label: 'Brass', sw: '#D2A54E' },
+  { id: 'ember', label: 'Ember', sw: '#E2874B' },
+  { id: 'amethyst', label: 'Amethyst', sw: '#B79ADE' },
+  { id: 'cobalt', label: 'Cobalt', sw: '#7C8FE8' },
+]
+const BOARDS: { id: BoardPalette; label: string; b1: string; b2: string }[] = [
+  { id: 'walnut', label: 'Walnut', b1: '#EDE4D1', b2: '#A17A55' },
+  { id: 'slate', label: 'Slate', b1: '#E9E3D5', b2: '#7D8EA0' },
+  { id: 'moss', label: 'Moss', b1: '#EDE6D3', b2: '#6F7F63' },
+  { id: 'rosewood', label: 'Rosewood', b1: '#F0E3D2', b2: '#8E5E55' },
+]
+
+/** Highlights the section of the settings that is on screen. */
+function useScrollSpy(ids: string[]): string {
+  const [active, setActive] = useState(ids[0])
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return
+    const seen = new Map<string, boolean>()
+    const obs = new IntersectionObserver((entries) => {
+      for (const e of entries) seen.set(e.target.id, e.isIntersecting)
+      const first = ids.find((id) => seen.get(id))
+      if (first) setActive(first)
+    }, { rootMargin: '-10% 0px -55% 0px' })
+    for (const id of ids) {
+      const el = document.getElementById(id)
+      if (el) obs.observe(el)
+    }
+    return () => obs.disconnect()
+  }, [ids.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+  return active
+}
+
+function AppearanceCard({ s, onSave }: { s: AppSettings; onSave: (c: Partial<AppSettings>) => void }) {
+  const choose = (c: Partial<AppSettings>) => {
+    applyAppearance(c)
+    onSave(c)
+  }
+  const accent = ACCENTS.find((a) => a.id === s.accent) ?? ACCENTS[0]
+  return (
+    <section className="card span2 appearance-card" id="appearance" aria-labelledby="appearance-title">
+      <div className="card-head">
+        <h2 className="card-title" id="appearance-title">Appearance</h2>
+        <span className="right">Applies instantly · saved with the rest of your settings</span>
+      </div>
+      <div className="appearance-body">
+        <div className="ap-block" role="radiogroup" aria-label="Mode">
+          <div className="ap-label">Mode</div>
+          <div className="ap-modes">
+            {MODES.map((m) => (
+              <button key={m.id} type="button" role="radio" aria-checked={s.theme === m.id} className={`ap-mode ${s.theme === m.id ? 'on' : ''}`} onClick={() => choose({ theme: m.id })}>
+                <span className={`prev ${m.id}`} aria-hidden="true" />
+                <span className="lbl">{m.id === 'system' ? 'Same as this Mac' : m.label}{s.theme === m.id && <Icon name="check" size={11} />}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="ap-block" role="radiogroup" aria-label="Accent">
+          <div className="ap-label">Accent</div>
+          <div className="ap-swatches">
+            {ACCENTS.map((a) => (
+              <button key={a.id} type="button" role="radio" aria-checked={s.accent === a.id} className={`ap-swatch ${s.accent === a.id ? 'on' : ''}`}
+                style={{ '--sw': a.sw } as React.CSSProperties} onClick={() => choose({ accent: a.id })}>
+                <i aria-hidden="true" />{a.label}
+              </button>
+            ))}
+          </div>
+          <p className="ap-help">Brass is the house default. The room and the board stay; the fittings change.</p>
+        </div>
+        <div className="ap-block" role="radiogroup" aria-label="Board">
+          <div className="ap-label">Board</div>
+          <div className="ap-boards">
+            {BOARDS.map((b) => (
+              <button key={b.id} type="button" role="radio" aria-checked={s.board === b.id} className={`ap-board ${s.board === b.id ? 'on' : ''}`} onClick={() => choose({ board: b.id })}>
+                <i aria-hidden="true" style={{ '--b1': b.b1, '--b2': b.b2 } as React.CSSProperties} />{b.label}
+              </button>
+            ))}
+          </div>
+          <p className="ap-help">The pieces and the frame never change.</p>
+        </div>
+        <div className="ap-preview" aria-hidden="true">
+          <div className="ap-label">Preview</div>
+          <div className="ap-preview-body">
+            <div className="ap-preview-board"><MiniBoard fen="8/8/8/4k3/8/8/8/3QK3 w - - 0 1" /></div>
+            <div className="ap-preview-info">
+              <span className="badge brass">{accent.label}</span>
+              <div className="big-eval">+0.26</div>
+              <span className="btn btn-primary btn-sm"><Icon name="spark" />Review</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function Backups() {
   const list = useLoad(() => api.backups(), [])
-  const [msg, setMsg] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const run = async (fn: () => Promise<string>) => {
-    setError(null)
     try {
-      setMsg(await fn())
+      toast(await fn(), 'success')
       list.reload()
     } catch (e) {
-      setError((e as Error).message)
+      toast((e as Error).message, 'error')
     }
   }
   const restore = (b: Backup) => {
@@ -38,43 +149,53 @@ function Backups() {
       return `Restored from ${file.name}. Your previous data was saved as ${r.safety_backup}. Reload the page to see it.`
     })
   }
+  const backups = list.data?.backups ?? []
+  const latest = backups[0]
   return (
-    <section className="panel" id="backups">
-      <h2>Backups</h2>
-      <p className="muted small">
-        Everything (games, reviews, notes, training progress, tournaments, settings) is in one file. Timur makes a backup each day it starts
-        and keeps the last 30, in <code>{list.data?.folder ?? 'data/backups'}</code>.
-      </p>
-      <div className="row">
-        <button type="button" className="btn btn-primary" onClick={() => run(async () => `Backup ${(await api.createBackup()).name} made.`)}>Back up now</button>
-        <label className="btn file-btn">
-          <Icon name="import" size={16} /> Restore from a file
-          <input type="file" accept=".db,application/vnd.sqlite3,application/octet-stream" onChange={(e) => upload(e.target.files?.[0])} />
-        </label>
+    <section className="card span2" id="backups" aria-labelledby="backups-title">
+      <div className="card-head"><h2 className="card-title" id="backups-title">Backups</h2><span className="right">{backups.length} kept</span></div>
+      <div className="set-body">
+        <div className="status-line">
+          <span className={latest ? 'ok' : 'warn'} aria-hidden="true" />
+          <span>{latest
+            ? <>Latest backup · <b>{new Date(latest.created_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</b></>
+            : 'No backups yet'} · daily, the last 30 are kept in <b>{list.data?.folder ?? 'data/backups'}</b></span>
+        </div>
+        <p className="set-help">Everything (games, reviews, notes, training progress, tournaments, settings) is in one file.</p>
+        <div className="row set-actions">
+          <button type="button" className="btn btn-sm btn-primary" onClick={() => run(async () => `Backup ${(await api.createBackup()).name} made.`)}><Icon name="save" />Back up now</button>
+          <label className="btn btn-sm file-btn">
+            <Icon name="upload" />Restore from a file
+            <input type="file" accept=".db,application/vnd.sqlite3,application/octet-stream" onChange={(e) => upload(e.target.files?.[0])} />
+          </label>
+        </div>
+        {backups.length > 0 && (
+          <table className="backup-table">
+            <thead><tr><th>Made</th><th>Size</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
+            <tbody>
+              {backups.map((b) => (
+                <tr key={b.name}>
+                  <td>
+                    {new Date(b.created_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+                    {b.name.includes('before-restore') ? <span className="tag">before a restore</span> : b.name.includes('-auto') ? <span className="tag">daily</span> : null}
+                  </td>
+                  <td>{size(b.size)}</td>
+                  <td>
+                    <div className="row row-end">
+                      <a className="btn btn-sm btn-ghost" href={`/api/backups/${encodeURIComponent(b.name)}`} download><Icon name="download" />Download</a>
+                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => restore(b)}><Icon name="refresh" />Restore</button>
+                      <button type="button" className="icon-btn" aria-label={`Delete backup ${b.name}`}
+                        onClick={() => window.confirm('Delete this backup?') && run(async () => { await api.deleteBackup(b.name); return 'Backup deleted.' })}>
+                        <Icon name="trash" size={15} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
-      {msg && <p role="status">{msg}</p>}
-      {error && <p className="form-error" role="alert">{error}</p>}
-      {list.data && list.data.backups.length > 0 && (
-        <table className="backup-table">
-          <thead><tr><th>Made</th><th>Size</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
-          <tbody>
-            {list.data.backups.map((b) => (
-              <tr key={b.name}>
-                <td>{new Date(b.created_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}{b.name.includes('before-restore') ? ' (before a restore)' : b.name.includes('-auto') ? ' (daily)' : ''}</td>
-                <td>{size(b.size)}</td>
-                <td className="row row-end">
-                  <a className="btn btn-small btn-quiet" href={`/api/backups/${encodeURIComponent(b.name)}`} download>Download</a>
-                  <button type="button" className="btn btn-small btn-quiet" onClick={() => restore(b)}>Restore</button>
-                  <button type="button" className="icon-btn" aria-label={`Delete backup ${b.name}`}
-                    onClick={() => window.confirm('Delete this backup?') && run(async () => { await api.deleteBackup(b.name); return 'Backup deleted.' })}>
-                    <Icon name="trash" size={15} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
     </section>
   )
 }
@@ -85,8 +206,8 @@ export function SettingsPage() {
   const [view, setView] = useState<SettingsView | null>(null)
   const [draft, setDraft] = useState<AppSettings | null>(null)
   const [names, setNames] = useState('')
-  const [msg, setMsg] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [state, setState] = useState<'saved' | 'saving' | 'error'>('saved')
+  const active = useScrollSpy(SECTIONS.map((s) => s.id))
 
   useEffect(() => {
     if (loaded.data) {
@@ -96,20 +217,24 @@ export function SettingsPage() {
     }
   }, [loaded.data])
 
-  if (loaded.error) return <div className="page"><p className="form-error">{loaded.error}</p></div>
-  if (!view || !draft) return <div className="page"><p className="muted">Loading…</p></div>
+  const head = (sub?: React.ReactNode, actions?: React.ReactNode) => (
+    <Masthead section="Timur" page="Settings" title="Settings" sub={sub} actions={actions} />
+  )
+  if (loaded.error) return <div className="page settings-page">{head()}<p className="form-error">{loaded.error}</p></div>
+  if (!view || !draft) return <div className="page settings-page">{head()}<p className="muted">Loading…</p></div>
 
-  const save = async (changes: Partial<AppSettings>, note = 'Saved.') => {
-    setError(null)
+  const save = async (changes: Partial<AppSettings>, note?: string) => {
+    setState('saving')
     try {
       const v = await api.saveSettings(changes)
       setView(v)
-      setDraft(v.settings)
-      if (changes.theme) applyTheme(changes.theme)
-      setMsg(note)
+      setDraft((d) => ({ ...(d ?? v.settings), ...changes, ...pick(v.settings, Object.keys(changes) as (keyof AppSettings)[]) }))
+      setState('saved')
+      if (note) toast(note, 'success')
       refreshHealth()
     } catch (e) {
-      setError((e as Error).message)
+      setState('error')
+      toast((e as Error).message, 'error')
     }
   }
 
@@ -117,133 +242,165 @@ export function SettingsPage() {
   const engineChanged = (['stockfish_path', 'live_threads', 'live_hash_mb', 'review_threads', 'review_hash_mb'] as const)
     .some((k) => draft[k] !== view.settings[k])
   const t = draft.thresholds
+  const nameList = names.split(',').map((n) => n.trim()).filter(Boolean)
+  const cores = Math.max(1, view.cpu_count)
 
   return (
     <div className="page settings-page">
-      <header className="page-head">
-        <h1>Settings</h1>
-        <p className="page-sub">Stored in your local database, together with your games.</p>
-      </header>
-      {msg && <p className="notice-bar" role="status">{msg} <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setMsg(null)}><Icon name="close" size={15} /></button></p>}
-      {error && <p className="form-error" role="alert">{error}</p>}
+      {head(
+        <Meta items={[<>Stored in <span className="hl" title={`${view.data_dir}/timur.db`}>{shortPath(view.data_dir)}/timur.db</span>, together with your games</>, 'Changes save immediately']} />,
+        <span className={`badge ${state === 'error' ? 'danger' : state === 'saving' ? 'warn' : 'live'}`} role="status">
+          <span className="dot" aria-hidden="true" />{state === 'error' ? 'Not saved' : state === 'saving' ? 'Saving…' : 'All changes saved'}
+        </span>,
+      )}
 
-      <div className="settings-grid">
-        <section className="panel">
-          <h2>You</h2>
-          <label className="field">
-            <span className="field-label">Your names as they appear in PGN files</span>
-            <input className="input" value={names} onChange={(e) => setNames(e.target.value)} onBlur={() => {
-              const list = names.split(',').map((n) => n.trim()).filter(Boolean)
-              if (list.join(',') !== view.settings.player_names.join(',')) save({ player_names: list }, 'Names saved.')
-            }} placeholder="Your name, your lichess username" />
-          </label>
-          <p className="muted small">Timur uses these to know which side you played in imported games, so your scores and puzzles are about your moves. Separate names with commas.</p>
-        </section>
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="Settings sections">
+          {SECTIONS.map((s) => (
+            <a key={s.id} href={`#/settings`} className={`item ${active === s.id ? 'on' : ''}`} aria-current={active === s.id ? 'true' : undefined}
+              onClick={(e) => { e.preventDefault(); document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}>
+              <Icon name={s.icon} size={15} />{s.label}
+              {s.id === 'tablebases' && view.tablebases.available && <span className="n">{view.tablebases.files}</span>}
+            </a>
+          ))}
+        </nav>
 
-        <section className="panel">
-          <h2>Appearance</h2>
-          <fieldset className="choice-group">
-            <legend>Theme</legend>
-            {(['system', 'dark', 'light'] as const).map((th) => (
-              <label key={th}>
-                <input type="radio" name="theme" checked={draft.theme === th} onChange={() => save({ theme: th }, 'Theme changed.')} />
-                {th === 'system' ? 'Same as this Mac' : th === 'dark' ? 'Dark' : 'Light'}
+        <div className="settings-content">
+          <section className="card span2" id="you" aria-labelledby="you-title">
+            <div className="card-head"><h2 className="card-title" id="you-title">You</h2></div>
+            <div className="set-body">
+              <label className="set-field">
+                <span className="set-label">Your names as they appear in PGN files</span>
+                <span className="set-input-wrap">
+                  <input className="input" value={names} onChange={(e) => setNames(e.target.value)} onBlur={() => {
+                    if (nameList.join(',') !== view.settings.player_names.join(',')) save({ player_names: nameList }, 'Names saved.')
+                  }} placeholder="Your name, your lichess username" />
+                  <span className="input-note">{nameList.length} name{nameList.length === 1 ? '' : 's'}</span>
+                </span>
               </label>
-            ))}
-          </fieldset>
-        </section>
-
-        <section className="panel">
-          <h2>Game review</h2>
-          <label className="field">
-            <span className="field-label">Default depth for new reviews</span>
-            <select className="input" value={draft.default_profile} onChange={(e) => save({ default_profile: e.target.value as AppSettings['default_profile'] })}>
-              <option value="quick">Quick (depth 14)</option>
-              <option value="standard">Standard (depth 18)</option>
-              <option value="deep">Deep (depth 22)</option>
-            </select>
-          </label>
-          <fieldset className="field">
-            <legend>A move is labelled when it lowers your winning chance by at least</legend>
-            <div className="form-grid three">
-              {(['inaccuracy', 'mistake', 'blunder'] as const).map((k) => (
-                <label key={k} className="field">
-                  <span className="field-label">{k[0].toUpperCase() + k.slice(1)}</span>
-                  <input className="input" type="number" min={1} max={60} step={0.5} value={t[k]}
-                    onChange={(e) => set('thresholds', { ...t, [k]: Number(e.target.value) })} />
-                </label>
-              ))}
+              <p className="set-help">Timur uses these to know which side you played in imported games, so your scores and puzzles are about your moves. Separate names with commas.</p>
             </div>
-          </fieldset>
-          <p className="muted small">In percentage points of winning chance. The defaults (5, 10, 15) are the ones lichess uses. New reviews use your values; old ones keep theirs.</p>
-          <div className="row">
-            <button type="button" className="btn" onClick={() => save({ thresholds: t }, 'Thresholds saved.')}
-              disabled={JSON.stringify(t) === JSON.stringify(view.settings.thresholds)}>Save thresholds</button>
-            <button type="button" className="btn btn-quiet" onClick={() => save({ thresholds: view.defaults.thresholds }, 'Thresholds reset.')}>Use the defaults</button>
-          </div>
-        </section>
+          </section>
 
-        <section className="panel">
-          <h2>Engine</h2>
-          <label className="field">
-            <span className="field-label">Stockfish program</span>
-            <input className="input" value={draft.stockfish_path} onChange={(e) => set('stockfish_path', e.target.value)}
-              placeholder={view.detected_stockfish ?? 'Not found: brew install stockfish'} />
-          </label>
-          <p className="muted small">Leave empty to use the one found automatically{view.detected_stockfish ? ` (${view.detected_stockfish})` : ''}.</p>
-          <div className="form-grid">
-            <label className="field"><span className="field-label">Analysis board threads</span>
-              <input className="input" type="number" min={1} max={view.cpu_count} value={draft.live_threads} onChange={(e) => set('live_threads', Number(e.target.value))} /></label>
-            <label className="field"><span className="field-label">Analysis board hash (MB)</span>
-              <input className="input" type="number" min={16} step={16} value={draft.live_hash_mb} onChange={(e) => set('live_hash_mb', Number(e.target.value))} /></label>
-            <label className="field"><span className="field-label">Game review threads</span>
-              <input className="input" type="number" min={1} max={view.cpu_count} value={draft.review_threads} onChange={(e) => set('review_threads', Number(e.target.value))} /></label>
-            <label className="field"><span className="field-label">Game review hash (MB)</span>
-              <input className="input" type="number" min={16} step={16} value={draft.review_hash_mb} onChange={(e) => set('review_hash_mb', Number(e.target.value))} /></label>
-          </div>
-          <p className="muted small">
-            This Mac has {view.cpu_count} cores. Keep the two thread counts together below that, so a review never slows down the board.
-          </p>
-          <div className="row">
-            <button type="button" className="btn btn-primary" disabled={!engineChanged} onClick={() => save({
-              stockfish_path: draft.stockfish_path, live_threads: draft.live_threads, live_hash_mb: draft.live_hash_mb,
-              review_threads: draft.review_threads, review_hash_mb: draft.review_hash_mb,
-            }, 'Engine settings saved. Stockfish restarts with them.')}>Apply engine settings</button>
-            <button type="button" className="btn btn-quiet" onClick={async () => {
-              if (!window.confirm('Reset all settings to their defaults? Your names are cleared too.')) return
-              const v = await api.resetSettings()
-              setView(v); setDraft(v.settings); setNames(''); applyTheme(v.settings.theme); setMsg('Settings reset.')
-            }}>Reset all settings</button>
-          </div>
-        </section>
+          <AppearanceCard s={draft} onSave={(c) => { setDraft({ ...draft, ...c }); save(c) }} />
 
-        <section className="panel">
-          <h2>Endgame tablebases</h2>
-          {view.tablebases.available ? (
-            <p>Installed: {view.tablebases.files} files for every position with up to {view.tablebases.max_pieces} pieces. The endgame trainer and Stockfish both use them.</p>
-          ) : (
-            <p>Not installed. Run <code>./scripts/get-tablebases.sh</code> in the Timur folder (about 1 GB), then press Check again.</p>
-          )}
-          <p className="muted small"><code>{view.tablebases.path}</code></p>
-          <button type="button" className="btn" onClick={async () => {
-            const tb = await api.reloadTablebases()
-            setView({ ...view, tablebases: tb })
-            setMsg(tb.available ? 'Tablebases found.' : 'Still no tablebases in that folder.')
-          }}>Check again</button>
-        </section>
+          <section className="card" id="review" aria-labelledby="review-title">
+            <div className="card-head"><h2 className="card-title" id="review-title">Game review</h2></div>
+            <div className="set-body">
+              <label className="set-field set-inline">
+                <span className="set-label">Default depth</span>
+                <span className="select"><select value={draft.default_profile} onChange={(e) => save({ default_profile: e.target.value as AppSettings['default_profile'] })}>
+                  <option value="quick">Quick · 14</option>
+                  <option value="standard">Standard · 18</option>
+                  <option value="deep">Deep · 22</option>
+                </select></span>
+              </label>
+              <fieldset className="set-field">
+                <legend className="set-label">Label a move when it lowers the win chance by</legend>
+                <div className="set-trio">
+                  {(['inaccuracy', 'mistake', 'blunder'] as const).map((k) => (
+                    <label key={k} className="set-num">
+                      <span>{k === 'inaccuracy' ? 'Inacc.' : k[0].toUpperCase() + k.slice(1)}</span>
+                      <input type="number" min={1} max={60} step={0.5} value={t[k]} aria-label={k[0].toUpperCase() + k.slice(1)}
+                        onChange={(e) => set('thresholds', { ...t, [k]: Number(e.target.value) })} />
+                    </label>
+                  ))}
+                </div>
+                <p className="set-help">Percentage points. The defaults (5, 10, 15) are the same cut-offs lichess uses. New reviews use your values; old ones keep theirs.</p>
+              </fieldset>
+              <div className="row set-actions">
+                <button type="button" className="btn btn-sm btn-primary" onClick={() => save({ thresholds: t }, 'Thresholds saved.')}
+                  disabled={JSON.stringify(t) === JSON.stringify(view.settings.thresholds)}>Save thresholds</button>
+                <button type="button" className="btn btn-sm btn-ghost" onClick={() => save({ thresholds: view.defaults.thresholds }, 'Thresholds reset.')}>Use the defaults</button>
+              </div>
+            </div>
+          </section>
 
-        <section className="panel">
-          <h2>Internet</h2>
-          <label className="switch">
-            <input type="checkbox" checked={draft.allow_internet} onChange={(e) => save({ allow_internet: e.target.checked }, e.target.checked ? 'Internet use allowed for downloading games.' : 'Timur is fully offline again.')} />
-            <span className="switch-track" aria-hidden="true" />
-            <span>Allow downloading opponents’ games from lichess and Chess.com</span>
-          </label>
-          <p className="muted small">Off by default. Nothing else ever leaves this computer; only the usernames you look up are sent to those sites.</p>
-        </section>
+          <section className="card" id="engine" aria-labelledby="engine-title">
+            <div className="card-head"><h2 className="card-title" id="engine-title">Engine</h2><span className="right">{view.detected_stockfish ? 'Stockfish found' : 'Stockfish not found'}</span></div>
+            <div className="set-body">
+              <div className="thread-row"><span className="nm">Analysis board</span><span className="bar"><i style={{ width: `${Math.min(100, (draft.live_threads / cores) * 100)}%` }} /></span><span className="v">{draft.live_threads} threads</span></div>
+              <div className="thread-row"><span className="nm">Game review</span><span className="bar"><i style={{ width: `${Math.min(100, (draft.review_threads / cores) * 100)}%` }} /></span><span className="v">{draft.review_threads} threads</span></div>
+              <div className="set-grid">
+                <label className="set-num"><span>Board threads</span>
+                  <input type="number" min={1} max={view.cpu_count} value={draft.live_threads} onChange={(e) => set('live_threads', Number(e.target.value))} aria-label="Analysis board threads" /></label>
+                <label className="set-num"><span>Board hash MB</span>
+                  <input type="number" min={16} step={16} value={draft.live_hash_mb} onChange={(e) => set('live_hash_mb', Number(e.target.value))} aria-label="Analysis board hash (MB)" /></label>
+                <label className="set-num"><span>Review threads</span>
+                  <input type="number" min={1} max={view.cpu_count} value={draft.review_threads} onChange={(e) => set('review_threads', Number(e.target.value))} aria-label="Game review threads" /></label>
+                <label className="set-num"><span>Review hash MB</span>
+                  <input type="number" min={16} step={16} value={draft.review_hash_mb} onChange={(e) => set('review_hash_mb', Number(e.target.value))} aria-label="Game review hash (MB)" /></label>
+              </div>
+              <label className="set-field">
+                <span className="set-label">Stockfish program</span>
+                <input className="input" value={draft.stockfish_path} onChange={(e) => set('stockfish_path', e.target.value)}
+                  placeholder={view.detected_stockfish ?? 'Not found: brew install stockfish'} />
+              </label>
+              <p className="set-help">
+                Leave the program empty to use the one found automatically. This Mac has {view.cpu_count} cores; keep the two thread counts together below that, so a review never slows down the board.
+              </p>
+              <div className="row set-actions">
+                <button type="button" className="btn btn-sm btn-primary" disabled={!engineChanged} onClick={() => save({
+                  stockfish_path: draft.stockfish_path, live_threads: draft.live_threads, live_hash_mb: draft.live_hash_mb,
+                  review_threads: draft.review_threads, review_hash_mb: draft.review_hash_mb,
+                }, 'Engine settings saved. Stockfish restarts with them.')}>Apply engine settings</button>
+                <button type="button" className="btn btn-sm btn-ghost" onClick={async () => {
+                  if (!window.confirm('Reset all settings to their defaults? Your names are cleared too.')) return
+                  const v = await api.resetSettings()
+                  setView(v); setDraft(v.settings); setNames('')
+                  applyAppearance({ theme: v.settings.theme, accent: v.settings.accent, board: v.settings.board })
+                  toast('Settings reset.')
+                  refreshHealth()
+                }}>Reset all settings</button>
+              </div>
+            </div>
+          </section>
 
-        <Backups />
+          <section className="card" id="tablebases" aria-labelledby="tb-title">
+            <div className="card-head"><h2 className="card-title" id="tb-title">Tablebases</h2></div>
+            <div className="set-body">
+              {view.tablebases.available ? (
+                <div className="status-line"><span className="ok" aria-hidden="true" /><span><b>{view.tablebases.files} files</b> · every position up to {view.tablebases.max_pieces} pieces</span></div>
+              ) : (
+                <div className="status-line"><span className="warn" aria-hidden="true" /><span><b>Not installed</b> · run <code>./scripts/get-tablebases.sh</code> (about 1 GB)</span></div>
+              )}
+              <div className="status-line"><span className={view.tablebases.available ? 'ok' : 'off'} aria-hidden="true" /><span><b className="path">{view.tablebases.path}</b> · checked on start</span></div>
+              <p className="set-help">The endgame trainer and Stockfish both use them.</p>
+              <button type="button" className="btn btn-sm" onClick={async () => {
+                const tb = await api.reloadTablebases()
+                setView({ ...view, tablebases: tb })
+                toast(tb.available ? 'Tablebases found.' : 'Still no tablebases in that folder.', tb.available ? 'success' : 'info')
+              }}><Icon name="refresh" />Check again</button>
+            </div>
+          </section>
+
+          <section className="card" id="internet" aria-labelledby="net-title">
+            <div className="card-head"><h2 className="card-title" id="net-title">Internet</h2><span className="right">{draft.allow_internet ? 'On' : 'Off'}</span></div>
+            <div className="set-body">
+              <label className="switch">
+                <input type="checkbox" checked={draft.allow_internet} onChange={(e) => save({ allow_internet: e.target.checked }, e.target.checked ? 'Internet use allowed for downloading games.' : 'Timur is fully offline again.')} />
+                <span className="switch-track" aria-hidden="true" />
+                <span>Allow downloading opponents’ games from lichess and Chess.com</span>
+              </label>
+              <p className="set-help">Off by default. Nothing else ever leaves this computer; only the usernames you look up are sent to those sites.</p>
+            </div>
+          </section>
+
+          <Backups />
+        </div>
       </div>
     </div>
   )
+}
+
+function pick<T extends object, K extends keyof T>(o: T, keys: K[]): Partial<T> {
+  const out: Partial<T> = {}
+  for (const k of keys) out[k] = o[k]
+  return out
+}
+
+/** The last two folders of a path: enough to recognise it without a wall of text. */
+function shortPath(p: string): string {
+  const parts = p.split('/').filter(Boolean)
+  return parts.length > 2 ? `…/${parts.slice(-2).join('/')}` : p
 }

@@ -25,14 +25,16 @@ export function Scoresheet({ tree, currentId, onSelect, annotations, emptyText }
   const box = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const el = box.current?.querySelector<HTMLElement>('[aria-current="true"]')
-    if (!el || !box.current) return
     const parent = box.current
-    const top = el.offsetTop - parent.offsetTop
-    if (top < parent.scrollTop + 8 || top > parent.scrollTop + parent.clientHeight - 40) {
+    const el = parent?.querySelector<HTMLElement>('[aria-current="true"]')
+    if (!el || !parent) return
+    const p = parent.getBoundingClientRect()
+    const r = el.getBoundingClientRect()
+    const top = r.top - p.top + parent.scrollTop
+    if (r.top < p.top + 8 || r.bottom > p.bottom - 8) {
       parent.scrollTo({ top: Math.max(0, top - parent.clientHeight / 2), behavior: 'auto' })
     }
-  }, [currentId])
+  }, [currentId, tree])
 
   const nodes = tree.nodes
   const root = nodes[tree.rootId]

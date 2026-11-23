@@ -1,0 +1,156 @@
+/* ---- endgames: the syllabus and the drill desk ------------------------------------------- */
+
+.hero {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 15px 18px;
+  margin: 0 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: radial-gradient(80% 160% at 0% -20%, var(--brass-soft), transparent 55%), var(--card-grad);
+  box-shadow: var(--inset);
+}
+.hero-main { min-width: 0; }
+.hero-main .eyebrow { margin: 0 0 4px; }
+.hero-main h2 { margin: 0; font-family: var(--font-display); font-stretch: 92%; font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
+.hero-main p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.hero-main .hl { color: var(--text2); }
+.hero-metrics { display: flex; gap: 22px; margin-left: auto; }
+.hero-metric { display: flex; flex-direction: column; gap: 2px; }
+.hero-metric .v { font-family: var(--font-display); font-stretch: 88%; font-size: 19px; font-weight: 650; }
+.hero-metric .v.brass { color: var(--brass); }
+.hero-metric .l { color: var(--muted); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+.hero > .btn { margin-left: 14px; }
+.how-it-works { margin-bottom: 14px; }
+
+.lesson-group { margin-top: 6px; }
+.group-head { display: flex; align-items: baseline; gap: 10px; margin: 16px 2px 10px; }
+.group-head h2 { margin: 0; font-family: var(--font-display); font-stretch: 94%; font-size: 15.5px; font-weight: 650; letter-spacing: -0.005em; }
+.group-head .count { color: var(--dim); font-size: 11px; white-space: nowrap; }
+.group-head .group-rule { display: block; flex: 1; height: 1px; background: var(--line); margin: 0 4px; align-self: center; }
+
+.lesson-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  gap: 12px;
+}
+.lesson {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--card-grad);
+  box-shadow: var(--inset);
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.lesson:hover { border-color: var(--brass-line); transform: translateY(-1px); }
+.lesson:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.lesson-top { display: block; padding: 8px 8px 0; }
+.lesson .mini { position: relative; display: block; border-radius: 7px; overflow: hidden; }
+.lesson .mini .mini-board { border-radius: 7px; }
+.lesson .goal {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: rgba(15, 13, 11, 0.82);
+  color: #f1eadd;
+  font-family: var(--font-display);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.lesson .goal.draw { color: #d9c9a8; }
+.lesson .ribbon {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 19px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--brass);
+  color: var(--on-brass);
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.lesson-body { display: flex; flex-direction: column; flex: 1; padding: 8px 11px 9px; }
+.lesson-title { font-size: 12.5px; font-weight: 600; line-height: 1.25; min-height: 31px; }
+.lesson-meta { display: flex; align-items: center; gap: 6px; margin-top: 3px; color: var(--muted); font-size: 10.5px; }
+.lesson-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10.5px;
+}
+.lesson-meta + .lesson-status { margin-top: 7px; }
+.sdots { display: flex; gap: 3px; }
+.sdots i { width: 4px; height: 4px; border-radius: 50%; background: var(--line2); }
+.sdots i.f { background: var(--brass); }
+.lesson-status .due, .lesson-status .mastered, .lesson-status .next { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.lesson-status .due { color: var(--warn); font-weight: 600; }
+.lesson-status .due .d { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.lesson-status .mastered { color: var(--brass); font-weight: 600; }
+.lesson-status .next { color: var(--dim); }
+
+/* drill */
+.drill-grid .inspector { height: auto; min-height: 0; }
+.prog-badge.due { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+.prog-badge.mastered { color: var(--brass); border-color: var(--brass-line); background: var(--brass-soft); }
+.goal-card .card-body { padding: 13px 15px 12px; }
+.goal-card .eyebrow { margin: 0 0 6px; }
+.goal-text { margin: 0; font-family: var(--font-display); font-stretch: 94%; font-size: 18px; font-weight: 640; line-height: 1.25; letter-spacing: -0.005em; }
+.hold-progress { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.hold-progress .meter { flex: 1; }
+.drill-status { padding: 11px 15px 13px; border-top: 1px solid var(--line); font-size: 13px; color: var(--text2); }
+.drill-status > * + * { margin-top: 8px; }
+.drill-status p { margin: 0; }
+.drill-msg { display: flex; align-items: center; gap: 8px; }
+.drill-status.is-good { background: linear-gradient(180deg, color-mix(in srgb, var(--success) 10%, transparent), transparent); }
+.drill-status.is-good .drill-msg { color: var(--success); }
+.drill-status.is-bad { background: linear-gradient(180deg, color-mix(in srgb, var(--danger) 9%, transparent), transparent); }
+.drill-status.is-bad .drill-msg { color: color-mix(in srgb, var(--danger) 75%, var(--text)); }
+.drill-hint { display: flex; align-items: flex-start; gap: 7px; padding: 8px 10px; border-radius: 8px; background: var(--brass-soft); border: 1px solid var(--brass-line); color: var(--text); }
+.drill-hint svg { flex: none; margin-top: 1px; color: var(--brass); }
+.spinner { width: 12px; height: 12px; flex: none; border-radius: 50%; border: 2px solid var(--line2); border-top-color: var(--brass); animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.lesson-text { font-family: var(--font-read); font-size: 14px; line-height: 1.6; color: var(--text2); }
+.lesson-text p { margin: 0 0 10px; }
+.lesson-steps { margin: 0 0 10px; padding-left: 20px; }
+.lesson-steps li { margin: 4px 0; }
+.lesson-steps li::marker { color: var(--brass); font-family: var(--font-display); font-weight: 700; font-size: 12px; }
+.lesson-text .tip { padding: 8px 11px; border-left: 2px solid var(--brass); background: var(--brass-soft); border-radius: 0 7px 7px 0; font-size: 13px; }
+.lesson-text .small { font-family: var(--font-ui); }
+.drill-moves .line-text { margin: 0; font-size: 13px; line-height: 1.8; color: var(--text2); }
+.drill-moves .mv-num { color: var(--dim); margin-right: 2px; }
+.drill-moves .mv-last { color: var(--brass-hi); font-weight: 600; }
+
+@media (max-width: 1080px) {
+  .hero { flex-wrap: wrap; }
+  .hero-metrics { margin-left: 0; }
+}

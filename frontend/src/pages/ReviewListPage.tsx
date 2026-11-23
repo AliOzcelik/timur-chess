@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../components/Icon'
+import { Masthead, Meta } from '../components/Masthead'
 import { api, type MyColor, type ReviewProfile, type ReviewSummaryRow } from '../lib/api'
 import { navigate } from '../lib/router'
 import { useReviewDraft } from '../state/analysis'
@@ -11,29 +12,8 @@ const PROFILES: { value: ReviewProfile; label: string; detail: string }[] = [
   { value: 'deep', label: 'Deep', detail: 'Depth 22, about 2 to 3 minutes' },
 ]
 
-// The interface is in English, so dates are too ("2 Nov 2026"), whatever the system language.
-const LOCALE = 'en-GB'
-
-export function formatDate(iso: string | null): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleDateString(LOCALE, { year: 'numeric', month: 'short', day: 'numeric' })
-}
-
-export function formatPgnDate(date: string | null): string | null {
-  if (!date) return null
-  const [y, m, d] = date.split('.')
-  if (!y || y.includes('?')) return null
-  if (!m || m.includes('?')) return y
-  const parsed = new Date(Number(y), Number(m) - 1, d && !d.includes('?') ? Number(d) : 1)
-  return parsed.toLocaleDateString(LOCALE, { year: 'numeric', month: 'short', ...(d && !d.includes('?') ? { day: 'numeric' } : {}) })
-}
-
-export function playersOf(r: { white: string | null; black: string | null }): string {
-  if (!r.white && !r.black) return 'Unnamed game'
-  return `${r.white ?? 'Unknown'} vs ${r.black ?? 'Unknown'}`
-}
+export { formatDate, formatPgnDate, playersOf } from '../lib/format'
+import { formatDate, formatPgnDate, playersOf } from '../lib/format'
 
 function StatusText({ r }: { r: ReviewSummaryRow }) {
   if (r.status === 'queued') return <span className="status status-wait">Waiting in line</span>
@@ -129,76 +109,112 @@ export function ReviewListPage({ startNew }: { startNew: boolean }) {
     setFormError(null)
   }
 
+  const [dragging, setDragging] = useState(false)
+  const done = reviews?.filter((r) => r.status === 'done') ?? []
+  const avgMine = (() => {
+    const vals = done.map((r) => (r.my_color === 'black' ? r.black_accuracy : r.my_color === 'white' ? r.white_accuracy : null)).filter((v): v is number => v !== null)
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
+  })()
+
   return (
     <div className="page review-list-page">
-      <header className="page-head">
-        <h1>Game review</h1>
-        <p className="page-sub">Stockfish checks every move and shows where the game was won and lost.</p>
-      </header>
+      <Masthead
+        section="Study"
+        page="Game review"
+        title="Game review"
+        sub={<Meta items={[
+          'Stockfish checks every move and shows where the game was won and lost.',
+          reviews ? `${reviews.length} ${reviews.length === 1 ? 'review' : 'reviews'}` : null,
+          avgMine !== null ? `Your average accuracy ${avgMine.toFixed(1)}` : null,
+        ]} />}
+        actions={<button type="button" className="btn btn-primary" onClick={() => pgnRef.current?.focus()}><Icon name="plus" />New review</button>}
+      />
 
       <div className="review-list-layout">
-        <form className="panel new-review" onSubmit={submit}>
-          <h2>Review a game</h2>
-          <label className="field">
-            <span className="field-label">PGN</span>
-            <textarea
-              ref={pgnRef}
-              className="input mono-ish"
-              rows={9}
-              value={pgn}
-              onChange={(e) => setPgn(e.target.value)}
-              placeholder={'[White "You"]\n[Black "Opponent"]\n[Date "2026.11.20"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 …'}
-              spellCheck={false}
-            />
-          </label>
-          <label className="btn btn-quiet file-btn">
-            <Icon name="file" size={16} /> Open a .pgn file
-            <input type="file" accept=".pgn,.txt,text/plain" onChange={(e) => readFile(e.target.files?.[0])} />
-          </label>
+        <form className="card new-review" onSubmit={submit}>
+          <div className="card-head"><h2>New review</h2><span className="right">Runs on this Mac</span></div>
+          <div className="card-body">
+            <label className={`field drop-zone ${dragging ? 'dragging' : ''}`}
+              onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => { e.preventDefault(); setDragging(false); readFile(e.dataTransfer.files?.[0]) }}
+            >
+              <span className="field-label">PGN</span>
+              <textarea
+                ref={pgnRef}
+                className="input mono-ish"
+                rows={8}
+                value={pgn}
+                onChange={(e) => setPgn(e.target.value)}
+                placeholder={'Paste a PGN or drop a .pgn file\n\n[White "You"]\n[Black "Opponent"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 …'}
+                spellCheck={false}
+              />
+            </label>
+            <label className="link-btn file-btn file-link">
+              <Icon name="upload" size={15} /> Open a .pgn file
+              <input type="file" accept=".pgn,.txt,text/plain" onChange={(e) => readFile(e.target.files?.[0])} />
+            </label>
 
-          <fieldset className="choice-group">
-            <legend>You played</legend>
-            <label><input type="radio" name="color" checked={myColor === 'white'} onChange={() => setMyColor('white')} /> White</label>
-            <label><input type="radio" name="color" checked={myColor === 'black'} onChange={() => setMyColor('black')} /> Black</label>
-            <label><input type="radio" name="color" checked={myColor === 'both'} onChange={() => setMyColor('both')} /> Neither, review both sides</label>
-          </fieldset>
+            <fieldset className="radio-cards three">
+              <legend className="section-label">You played</legend>
+              {([['white', 'White'], ['black', 'Black'], ['both', 'Both sides']] as const).map(([v, label]) => (
+                <label key={v} className={`radio-card ${myColor === v ? 'on' : ''}`}>
+                  <input type="radio" name="color" className="visually-hidden" checked={myColor === v} onChange={() => setMyColor(v)} />
+                  <span className={`side-swatch ${v}`} aria-hidden="true" />
+                  <span className="rc-title">{label}</span>
+                </label>
+              ))}
+            </fieldset>
 
-          <fieldset className="choice-group stacked">
-            <legend>How deep</legend>
-            {PROFILES.map((p) => (
-              <label key={p.value}>
-                <input type="radio" name="profile" checked={profile === p.value} onChange={() => setProfile(p.value)} />
-                <span><strong>{p.label}</strong> <span className="muted">{p.detail}</span></span>
-              </label>
-            ))}
-          </fieldset>
+            <fieldset className="radio-cards three">
+              <legend className="section-label">How deep</legend>
+              {PROFILES.map((p) => (
+                <label key={p.value} className={`radio-card ${profile === p.value ? 'on' : ''}`}>
+                  <input type="radio" name="profile" className="visually-hidden" checked={profile === p.value} onChange={() => setProfile(p.value)} />
+                  <span className="rc-title">{p.label}</span>
+                  <span className="rc-sub">{p.detail}</span>
+                </label>
+              ))}
+            </fieldset>
 
-          {formError && <p className="form-error" role="alert">{formError}</p>}
-          <button type="submit" className="btn btn-primary" disabled={submitting}>
-            {submitting ? 'Starting…' : 'Start review'}
-          </button>
+            {formError && <p className="form-error" role="alert">{formError}</p>}
+            <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
+              <Icon name="spark" />{submitting ? 'Starting…' : 'Start review'}
+            </button>
+          </div>
         </form>
 
-        <section className="panel review-history" aria-label="Reviewed games">
-          <h2>Reviewed games</h2>
-          {listError && <p className="form-error" role="alert">{listError}</p>}
-          {reviews === null && !listError && <p className="muted">Loading…</p>}
+        <section className="card review-history" aria-label="Reviewed games">
+          <div className="card-head"><h2>Reviewed games</h2>{reviews && reviews.length > 0 && <span className="right">{reviews.length}</span>}</div>
+          {listError && <p className="form-error" role="alert" style={{ margin: 15 }}>{listError}</p>}
+          {reviews === null && !listError && <div className="card-body"><div className="skeleton" style={{ height: 160 }} /></div>}
           {reviews?.length === 0 && (
-            <p className="empty">No reviews yet. Paste a game on the left, or play through one on the analysis board and choose “Review this game”.</p>
+            <div className="card-body">
+              <div className="empty-state slim">
+                <h2>No reviews yet</h2>
+                <p>Paste a game on the left, or play through one on the analysis board and choose “Review this game”.</p>
+              </div>
+            </div>
           )}
           <ul className="review-rows">
             {reviews?.map((r) => {
               const played = formatPgnDate(r.game_date)
+              const mine = r.my_color === 'black' ? r.black_accuracy : r.my_color === 'white' ? r.white_accuracy : r.white_accuracy
               return (
                 <li key={r.id} className="review-row">
                   <a href={`#/review/${r.id}`} className="review-link">
-                    <span className="review-players">{playersOf(r)}</span>
-                    <span className="review-meta">
-                      {r.result && <span>{r.result}</span>}
-                      {r.opening && <span className="review-opening">{r.eco} {r.opening}</span>}
-                      {played && <span>Played {played}</span>}
-                      <span>Reviewed {formatDate(r.created_at)}</span>
-                      <span>{Math.ceil(r.ply_count / 2)} moves</span>
+                    <span className="ring sm" style={{ '--p': r.status === 'done' ? mine ?? 0 : r.total ? (r.progress / r.total) * 100 : 0 } as React.CSSProperties} aria-hidden="true">
+                      <span className="n">{r.status === 'done' ? mine?.toFixed(0) ?? '–' : <Icon name="clock" size={13} />}</span>
+                    </span>
+                    <span className="review-main">
+                      <span className="review-players">{playersOf(r)}</span>
+                      <span className="review-meta">
+                        {r.result && <span className="strong">{r.result.replace('1/2-1/2', '½–½')}</span>}
+                        {r.opening && <span className="review-opening"><span className="eco">{r.eco}</span> {r.opening}</span>}
+                        {played && <span>Played {played}</span>}
+                        <span>Reviewed {formatDate(r.created_at)}</span>
+                        <span>{Math.ceil(r.ply_count / 2)} moves</span>
+                      </span>
                     </span>
                     <span className="review-acc">
                       <StatusText r={r} />
@@ -213,9 +229,10 @@ export function ReviewListPage({ startNew }: { startNew: boolean }) {
                         </>
                       )}
                     </span>
+                    <span className="row-chev" aria-hidden="true"><Icon name="chev" size={15} /></span>
                   </a>
-                  <button type="button" className="icon-btn" aria-label={`Delete review of ${playersOf(r)}`} onClick={() => remove(r)}>
-                    <Icon name="trash" size={16} />
+                  <button type="button" className="icon-btn row-del" aria-label={`Delete review of ${playersOf(r)}`} onClick={() => remove(r)}>
+                    <Icon name="trash" size={15} />
                   </button>
                 </li>
               )

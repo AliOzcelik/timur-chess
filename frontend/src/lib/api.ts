@@ -41,6 +41,8 @@ export interface TablebaseStatus {
 }
 
 export type Theme = 'system' | 'dark' | 'light'
+export type Accent = 'brass' | 'ember' | 'amethyst' | 'cobalt'
+export type BoardPalette = 'walnut' | 'slate' | 'moss' | 'rosewood'
 
 export interface Health {
   ok: boolean
@@ -48,7 +50,7 @@ export interface Health {
   engines: { live: EngineStatus; review: EngineStatus; trainer?: EngineStatus }
   tablebases?: TablebaseStatus
   openings?: number
-  settings?: { theme: Theme; onboarded: boolean; default_profile: ReviewProfile }
+  settings?: { theme: Theme; accent?: Accent; board?: BoardPalette; onboarded: boolean; default_profile: ReviewProfile }
 }
 
 export type Classification = 'best' | 'excellent' | 'good' | 'inaccuracy' | 'mistake' | 'blunder' | 'forced'
@@ -450,6 +452,8 @@ export interface AppSettings {
   default_profile: ReviewProfile
   thresholds: { inaccuracy: number; mistake: number; blunder: number }
   theme: Theme
+  accent: Accent
+  board: BoardPalette
   allow_internet: boolean
   player_names: string[]
   onboarded: boolean

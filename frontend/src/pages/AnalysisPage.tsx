@@ -2,6 +2,8 @@ import { useMemo, useRef, useState } from 'react'
 import type { DrawShape } from '@lichess-org/chessground/draw'
 import type { Key } from '@lichess-org/chessground/types'
 import { Board } from '../components/Board'
+import { BoardShell, PlayerStrip } from '../components/BoardShell'
+import { Masthead, Meta } from '../components/Masthead'
 import { EngineLines } from '../components/EngineLines'
 import { EvalBar } from '../components/EvalBar'
 import { Icon } from '../components/Icon'
@@ -9,7 +11,7 @@ import { ImportDialog } from '../components/ImportDialog'
 import { PositionEditor } from '../components/PositionEditor'
 import { PositionNotes } from '../components/PositionNotes'
 import { Scoresheet } from '../components/Scoresheet'
-import { isCheck, turnOf, uciSquares } from '../lib/chess'
+import { fullmoveOf, isCheck, turnOf, uciSquares } from '../lib/chess'
 import { formatEval, evalSide, type Eval } from '../lib/evals'
 import { useOpening } from '../hooks/useOpening'
 import { api } from '../lib/api'
@@ -157,31 +159,59 @@ export function AnalysisPage() {
   const liveStatus = health?.engines.live
   const white = s.tree.headers.White && s.tree.headers.White !== '?' ? s.tree.headers.White : null
   const black = s.tree.headers.Black && s.tree.headers.Black !== '?' ? s.tree.headers.Black : null
-  const toMove = turnOf(node.fen) === 'white' ? 'White' : 'Black'
+  const turn = turnOf(node.fen)
+  const toMove = turn === 'white' ? 'White' : 'Black'
+  const event = s.tree.headers.Event && s.tree.headers.Event !== '?' ? s.tree.headers.Event : null
+  const roundTag = s.tree.headers.Round && s.tree.headers.Round !== '?' && s.tree.headers.Round !== '-' ? s.tree.headers.Round : null
+  const plies = useMemo(() => {
+    let n = 0
+    let cur = s.tree.nodes[s.tree.rootId]
+    while (cur.children.length) { n++; cur = s.tree.nodes[cur.children[0]] }
+    return n
+  }, [s.tree])
+  const ply = moves.length
+  const lastSan = node.san ? `${fullmoveOf(s.tree.nodes[node.parentId!].fen)}${turnOf(s.tree.nodes[node.parentId!].fen) === 'white' ? '.' : '…'} ${node.san}` : null
+
+  const topSide = s.orientation === 'white' ? 'black' : 'white'
+  const bottomSide = s.orientation
+  const nameOf = (side: 'white' | 'black') => (side === 'white' ? white : black)
+  const ratingOf = (side: 'white' | 'black') => s.tree.headers[side === 'white' ? 'WhiteElo' : 'BlackElo'] || null
+
+  const saveText = s.saveState === 'saving' ? 'Saving…' : s.saveState === 'error' ? 'Not saved — server offline' : 'Saved to library'
 
   return (
     <div className="page analysis-page">
-      <header className="page-head">
-        <h1>Analysis board</h1>
-        <p className="page-sub">
-          {white || black ? `${white ?? 'Unknown'} vs ${black ?? 'Unknown'}` : `${toMove} to move`}
-          {opening && (
-            <span className="opening-name" title={`ECO ${opening.eco}`}>
-              <span className="eco">{opening.eco}</span> {opening.name}
-            </span>
-          )}
-          {s.gameId && (
-            <a className={`save-state save-${s.saveState}`} href="#/library">
-              {s.saveState === 'saving' ? 'Saving…' : s.saveState === 'error' ? 'Not saved, server offline' : 'Saved in library'}
-            </a>
-          )}
-        </p>
-      </header>
+      <Masthead
+        section="Study"
+        page="Analysis"
+        title="Analysis board"
+        sub={
+          <Meta items={[
+            white || black ? <span className="strong">{`${white ?? 'Unknown'} vs ${black ?? 'Unknown'}`}</span> : `${toMove} to move`,
+            event ? `${event}${roundTag ? ` · Round ${roundTag}` : ''}` : null,
+            opening ? <span className="opening-name" title={`ECO ${opening.eco}`}><span className="eco">{opening.eco}</span> {opening.name}</span> : null,
+            s.gameId ? (
+              <a className={`save-state save-${s.saveState}`} href="#/library">
+                <Icon name={s.saveState === 'error' ? 'info' : 'check'} size={15} />{saveText}
+              </a>
+            ) : null,
+          ]} />
+        }
+        actions={
+          <>
+            <button type="button" className="btn btn-ghost" onClick={newBoard}><Icon name="plus" />New board</button>
+            <button type="button" className="btn btn-primary" onClick={reviewThisGame}><Icon name="spark" />Review this game</button>
+          </>
+        }
+      />
 
-      <div className="analysis-layout">
-        <section className="board-column" aria-label="Board">
-          <div className="board-area">
-            <EvalBar value={barEval} orientation={s.orientation} hidden={!s.engineOn || threat} />
+      <div className="analysis-grid">
+        <section className="board-col" aria-label="Board">
+          <BoardShell
+            top={<PlayerStrip position="top" name={nameOf(topSide)} rating={ratingOf(topSide)} side={topSide} toMove={turn === topSide} />}
+            bottom={<PlayerStrip position="bottom" name={nameOf(bottomSide)} rating={ratingOf(bottomSide)} side={bottomSide} toMove={turn === bottomSide} />}
+            evalBar={<EvalBar value={barEval} orientation={s.orientation} hidden={!s.engineOn || threat} />}
+          >
             <Board
               fen={node.fen}
               orientation={s.orientation}
@@ -190,41 +220,52 @@ export function AnalysisPage() {
               shapes={shapes}
               onMove={(uci) => s.play(uci)}
             />
-          </div>
+          </BoardShell>
           <div className="board-toolbar" role="toolbar" aria-label="Board actions">
             <button type="button" className="tool" onClick={() => s.flip()} title="Flip board (F)" aria-label="Flip board">
-              <Icon name="flip" />
+              <Icon name="flip" /><span>Flip</span>
             </button>
             <button type="button" className="tool" onClick={() => setEditorOpen(true)} aria-label="Set up position" title="Set up position">
-              <Icon name="edit" /> <span>Set up</span>
+              <Icon name="edit" /><span>Set up</span>
             </button>
-            <button type="button" className="tool" onClick={newBoard}>
-              <Icon name="plus" /> <span>New board</span>
+            <button type="button" className="tool" onClick={newBoard} aria-label="New" title="New board">
+              <Icon name="plus" /><span>New</span>
             </button>
             <span className="tool-sep" aria-hidden="true" />
             <button type="button" className="tool" onClick={() => setImportOpen(true)}>
-              <Icon name="import" /> <span>Import</span>
+              <Icon name="import" /><span>Import</span>
             </button>
             <button type="button" className="tool" onClick={() => copy(toPgn(s.tree), 'PGN')} aria-label="Copy PGN" title="Copy the game as PGN">
-              <Icon name="copy" /> <span>PGN</span>
+              <Icon name="copy" /><span>PGN</span>
             </button>
             <button type="button" className="tool" onClick={() => copy(node.fen, 'FEN')} aria-label="Copy FEN" title="Copy this position as FEN">
-              <Icon name="copy" /> <span>FEN</span>
+              <Icon name="copy" /><span>FEN</span>
             </button>
-            {!s.gameId && (
-              <button type="button" className="tool" onClick={saveToLibrary} disabled={saving} aria-label="Save to library" title="Save to library">
-                <Icon name="library" /> <span>Save</span>
-              </button>
-            )}
-            <button type="button" className="tool tool-accent" onClick={reviewThisGame}>
-              <Icon name="review" /> <span>Review this game</span>
-            </button>
+            <span className="tool-right">
+              {s.gameId ? (
+                <span className="tool tool-quiet"><Icon name="save" /><span>{s.saveState === 'saving' ? 'Saving…' : s.saveState === 'error' ? 'Not saved' : 'Saved'}</span></span>
+              ) : (
+                <button type="button" className="tool" onClick={saveToLibrary} disabled={saving} aria-label="Save to library" title="Save to library">
+                  <Icon name="save" /><span>Save</span>
+                </button>
+              )}
+            </span>
           </div>
-          <p className="notice" role="status" aria-live="polite">{notice}</p>
+          <div className="board-status">
+            <span className="status-msg notice" role="status" aria-live="polite">
+              {notice ?? (lastSan ? <><Icon name="check" />{lastSan}{s.gameId && s.saveState === 'saved' ? ' · all changes saved' : ''}</> : null)}
+            </span>
+            <span className="spacer" />
+            <span className="keys" aria-hidden="true">
+              <kbd className="key">←</kbd><kbd className="key">→</kbd><span style={{ margin: '0 6px 0 1px' }}>browse</span>
+              <kbd className="key">Space</kbd><span style={{ margin: '0 6px 0 1px' }}>engine</span>
+              <kbd className="key">F</kbd><span style={{ marginLeft: 1 }}>flip</span>
+            </span>
+          </div>
         </section>
 
-        <aside className="side-panel" aria-label="Engine and moves">
-          <section className="engine-panel">
+        <aside className="inspector" aria-label="Engine and moves">
+          <section className="card engine-panel" aria-label="Engine">
             <div className="engine-head">
               <label className="switch">
                 <input
@@ -235,47 +276,62 @@ export function AnalysisPage() {
                 <span className="switch-track" aria-hidden="true" />
                 <span className="switch-label">Engine</span>
               </label>
+              <div className="right">
+                {s.engineOn && engine.connected && !liveStatus?.error && <span className="badge live"><span className="dot" />Live</span>}
+                <span className="engine-name">{liveStatus?.name ?? 'Stockfish'}</span>
+              </div>
+            </div>
+            <div className="eval-block">
               <span className={`big-eval side-${evalSide(headlineEval)}`} aria-live="off">
-                {s.engineOn ? (threat ? 'Threat' : formatEval(headlineEval) || '…') : ''}
+                {s.engineOn ? (threat ? 'Threat' : formatEval(headlineEval) || '…') : '—'}
               </span>
-              <span className="engine-name">{liveStatus?.name ?? 'Stockfish'}</span>
+              <div className="eval-words">
+                {s.engineOn ? (threat ? `What ${toMove === 'White' ? 'Black' : 'White'} threatens` : assess(headlineEval)) : 'Engine off'}
+                <div className="sub">
+                  {s.engineOn && info?.depth ? <><b>Depth {info.depth}</b>{s.depth ? ` of ${s.depth}` : ''}{info.nps ? ` · ${formatNps(info.nps)}` : ''}</> : s.engineOn ? 'Starting…' : 'Press Space to start'}
+                </div>
+              </div>
             </div>
             {liveStatus?.error && <p className="engine-error" role="alert">{liveStatus.error}</p>}
             {!engine.connected && <p className="engine-error">Connecting to the engine…</p>}
 
             <div className="engine-controls">
-              <label className="mini-field">
+              <label className="select">
                 <span>Lines</span>
-                <select value={s.multipv} onChange={(e) => s.setSettings({ multipv: Number(e.target.value) })} disabled={threat}>
+                <select aria-label="Lines" value={s.multipv} onChange={(e) => s.setSettings({ multipv: Number(e.target.value) })} disabled={threat}>
                   {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
                 </select>
+                <Icon name="chevd" size={13} />
               </label>
-              <label className="mini-field">
+              <label className="select">
                 <span>Depth</span>
                 <select
+                  aria-label="Depth"
                   value={s.depth === null ? 'none' : String(s.depth)}
                   onChange={(e) => s.setSettings({ depth: e.target.value === 'none' ? null : Number(e.target.value) })}
                 >
                   {DEPTHS.map((d) => <option key={d.label} value={d.value === null ? 'none' : String(d.value)}>{d.label}</option>)}
                 </select>
+                <Icon name="chevd" size={13} />
               </label>
+              <span className="spacer" />
               <button
                 type="button"
                 className={`chip ${s.arrows ? 'chip-on' : ''}`}
                 aria-pressed={s.arrows}
                 onClick={() => s.setSettings({ arrows: !s.arrows })}
               >
-                <Icon name="arrows" size={15} /> Arrows
+                <Icon name="arrows" size={14} />Arrows
               </button>
               <button
                 type="button"
-                className={`chip ${threat ? 'chip-on chip-threat' : ''}`}
+                className={`chip chip-threat ${threat ? 'chip-on' : ''}`}
                 aria-pressed={threat}
                 disabled={inCheck}
                 title={inCheck ? 'Not available while in check' : 'Show what the opponent threatens (X)'}
                 onClick={() => s.setThreat(!s.threat)}
               >
-                <Icon name="target" size={15} /> Threat
+                <Icon name="target" size={14} />Threat
               </button>
             </div>
 
@@ -289,42 +345,35 @@ export function AnalysisPage() {
             />
           </section>
 
-          <section className="moves-panel" aria-label="Moves">
+          <section className="card moves-card moves-panel" aria-label="Moves">
+            <div className="card-head">
+              <h2>Moves</h2>
+              <span className="right">{plies} {plies === 1 ? 'ply' : 'plies'}{isOnMainline(s.tree, node.id) ? ' · main line' : ' · side line'}</span>
+            </div>
             <Scoresheet tree={s.tree} currentId={s.currentId} onSelect={s.goTo} />
-            <div className="nav-bar">
-              <div className="nav-buttons">
-                <button type="button" className="icon-btn" onClick={s.toStart} aria-label="First move" title="First move (↑)"><Icon name="first" /></button>
-                <button type="button" className="icon-btn" onClick={s.back} aria-label="Previous move" title="Previous move (←)"><Icon name="prev" /></button>
-                <button type="button" className="icon-btn" onClick={s.forward} aria-label="Next move" title="Next move (→)"><Icon name="next" /></button>
-                <button type="button" className="icon-btn" onClick={s.toEnd} aria-label="Last move" title="Last move (↓)"><Icon name="last" /></button>
-              </div>
+            <div className="sheet-foot nav-bar">
+              <button type="button" className="icon-btn" onClick={s.toStart} aria-label="First move" title="First move (↑)"><Icon name="first" /></button>
+              <button type="button" className="icon-btn" onClick={s.back} aria-label="Previous move" title="Previous move (←)"><Icon name="prev" /></button>
+              <button type="button" className="icon-btn" onClick={s.forward} aria-label="Next move" title="Next move (→)"><Icon name="next" /></button>
+              <button type="button" className="icon-btn" onClick={s.toEnd} aria-label="Last move" title="Last move (↓)"><Icon name="last" /></button>
               {node.parentId && (
-                <div className="node-actions">
+                <span className="node-actions">
                   {!isOnMainline(s.tree, node.id) && (
-                    <button type="button" className="btn btn-small btn-quiet" onClick={() => s.promote(node.id)}>
-                      <Icon name="promote" size={15} /> Make main line
+                    <button type="button" className="btn btn-sm btn-ghost" onClick={() => s.promote(node.id)} title="Make main line">
+                      <Icon name="promote" size={15} />Make main line
                     </button>
                   )}
-                  <button type="button" className="btn btn-small btn-quiet" onClick={() => s.remove(node.id)}>
-                    <Icon name="trash" size={15} /> Delete from here
+                  <button type="button" className="btn btn-sm btn-ghost" onClick={() => s.remove(node.id)} title="Delete from here">
+                    <Icon name="trash" size={15} />Delete from here
                   </button>
-                </div>
+                </span>
               )}
+              <span className="spacer" />
+              <span>{ply === 0 ? 'Start' : `Ply ${ply} of ${plies}`}</span>
             </div>
           </section>
 
           <PositionNotes fen={node.fen} opening={opening} gameId={s.gameId} />
-
-          <details className="shortcuts">
-            <summary>Keyboard shortcuts</summary>
-            <dl>
-              <dt>← →</dt><dd>Previous and next move</dd>
-              <dt>↑ ↓</dt><dd>Start and end of the line</dd>
-              <dt>Space</dt><dd>Engine on or off</dd>
-              <dt>F</dt><dd>Flip the board</dd>
-              <dt>X</dt><dd>Threat mode</dd>
-            </dl>
-          </details>
         </aside>
       </div>
 
@@ -348,4 +397,24 @@ export function AnalysisPage() {
       />
     </div>
   )
+}
+
+function formatNps(nps: number): string {
+  return nps > 1e6 ? `${(nps / 1e6).toFixed(1)}M n/s` : `${Math.round(nps / 1e3)}k n/s`
+}
+
+/** The evaluation in plain words. */
+function assess(e: Eval | null): string {
+  if (!e) return 'Reading the position'
+  if (e.winner) return `${e.winner === 'white' ? 'White' : 'Black'} has won`
+  if (e.draw) return 'The game is drawn'
+  if (e.mate !== null && e.mate !== undefined) return `${e.mate > 0 ? 'White' : 'Black'} mates in ${Math.abs(e.mate)}`
+  const cp = e.cp ?? 0
+  const side = cp > 0 ? 'White' : 'Black'
+  const a = Math.abs(cp)
+  if (a < 30) return 'The position is equal'
+  if (a < 80) return `${side} is slightly better`
+  if (a < 200) return `${side} is better`
+  if (a < 500) return `${side} is winning`
+  return `${side} is completely winning`
 }

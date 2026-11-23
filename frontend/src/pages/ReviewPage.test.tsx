@@ -20,7 +20,7 @@ function serve(detail: ReviewDetail = review, extra = {}) {
 async function open(detail: ReviewDetail = review, extra = {}) {
   const server = serve(detail, extra)
   render(<ReviewPage id={detail.id} />)
-  await screen.findByRole('heading', { level: 1, name: 'You vs Opponent' })
+  await screen.findByRole('heading', { level: 1, name: 'You — Opponent' })
   return server
 }
 
@@ -36,7 +36,11 @@ beforeEach(() => {
 describe('ReviewPage, finished review', () => {
   it('shows the game details and accuracy for both sides', async () => {
     await open()
-    expect(screen.getByText('1-0, Club night, Played 20 Nov 2026, Reviewed 23 Nov 2026')).toBeInTheDocument()
+    const sub = document.querySelector('.masthead .page-sub') as HTMLElement
+    expect(sub).toHaveTextContent('1-0')
+    expect(sub).toHaveTextContent('Club night')
+    expect(sub).toHaveTextContent('20 Nov 2026')
+    expect(sub).toHaveTextContent('Review complete')
     const accuracy = screen.getByRole('row', { name: /Accuracy/ })
     expect(accuracy).toHaveTextContent(`${analysis.summary.white.accuracy!.toFixed(1)}%`)
     expect(accuracy).toHaveTextContent(`${analysis.summary.black.accuracy!.toFixed(1)}%`)

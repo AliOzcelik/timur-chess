@@ -11,7 +11,7 @@ interface Props {
   onSelect: (index: number) => void
 }
 
-const HEIGHT = 112
+const HEIGHT = 82
 
 export function EvalGraph({ wins, labels, current, markers, onSelect }: Props) {
   const wrap = useRef<HTMLDivElement>(null)

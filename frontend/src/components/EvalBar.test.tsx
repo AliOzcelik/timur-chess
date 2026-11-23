@@ -31,6 +31,6 @@ describe('EvalBar', () => {
   it('hidden hides the number', () => {
     const { container } = render(<EvalBar value={{ cp: 20, mate: null }} orientation="white" hidden />)
     expect(container.querySelector('.eval-bar')).toHaveClass('is-hidden')
-    expect(container.querySelector('.eval-bar-text')).toBeNull()
+    expect(container.querySelector('.eval-bar-text')).toBeEmptyDOMElement()
   })
 })

@@ -195,6 +195,11 @@ a {
   font-size: 22px;
   letter-spacing: 0.01em;
 }
+.brand-mark {
+  flex: none;
+  border-radius: 7px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brass) 35%, transparent);
+}
 
 .nav-list {
   list-style: none;

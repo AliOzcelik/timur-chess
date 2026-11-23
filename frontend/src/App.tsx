@@ -119,10 +119,7 @@ export function App() {
       <a className="skip-link" href="#main">Skip to content</a>
       <nav className="sidebar" aria-label="Main">
         <a className="brand" href="#/analysis" aria-label="Timur Chess, analysis board">
-          <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
-            <path d="M6 6h10v10H6zM16 16h10v10H16z" fill="var(--brass)" />
-            <path d="M16 6h10v10H16zM6 16h10v10H6z" fill="var(--bone)" />
-          </svg>
+          <img className="brand-mark" src="/logo-mark.png" width="32" height="32" alt="" />
           <span>Timur</span>
         </a>
         <ul className="nav-list">

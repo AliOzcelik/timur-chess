@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.png" alt="Timur chess trainer logo" width="280">
+</p>
+
 # Timur
 
 A chess trainer that runs entirely on your Mac. Stockfish 19 analyses your games and positions, the Syzygy tablebases judge endgames exactly, and everything you save stays in one local database file. Nothing is sent anywhere unless you turn on downloading opponents' games.

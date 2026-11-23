@@ -192,29 +192,30 @@ export function AnalysisPage() {
             />
           </div>
           <div className="board-toolbar" role="toolbar" aria-label="Board actions">
-            <button type="button" className="tool" onClick={() => s.flip()} title="Flip board (F)">
-              <Icon name="flip" /> <span>Flip</span>
+            <button type="button" className="tool" onClick={() => s.flip()} title="Flip board (F)" aria-label="Flip board">
+              <Icon name="flip" />
             </button>
-            <button type="button" className="tool" onClick={() => setEditorOpen(true)}>
-              <Icon name="edit" /> <span>Set up position</span>
+            <button type="button" className="tool" onClick={() => setEditorOpen(true)} aria-label="Set up position" title="Set up position">
+              <Icon name="edit" /> <span>Set up</span>
             </button>
-            <button type="button" className="tool" onClick={() => setImportOpen(true)}>
-              <Icon name="import" /> <span>Import</span>
-            </button>
-            <button type="button" className="tool" onClick={() => copy(toPgn(s.tree), 'PGN')}>
-              <Icon name="copy" /> <span>Copy PGN</span>
-            </button>
-            <button type="button" className="tool" onClick={() => copy(node.fen, 'FEN')}>
-              <Icon name="copy" /> <span>Copy FEN</span>
-            </button>
-            {!s.gameId && (
-              <button type="button" className="tool" onClick={saveToLibrary} disabled={saving}>
-                <Icon name="library" /> <span>Save to library</span>
-              </button>
-            )}
             <button type="button" className="tool" onClick={newBoard}>
               <Icon name="plus" /> <span>New board</span>
             </button>
+            <span className="tool-sep" aria-hidden="true" />
+            <button type="button" className="tool" onClick={() => setImportOpen(true)}>
+              <Icon name="import" /> <span>Import</span>
+            </button>
+            <button type="button" className="tool" onClick={() => copy(toPgn(s.tree), 'PGN')} aria-label="Copy PGN" title="Copy the game as PGN">
+              <Icon name="copy" /> <span>PGN</span>
+            </button>
+            <button type="button" className="tool" onClick={() => copy(node.fen, 'FEN')} aria-label="Copy FEN" title="Copy this position as FEN">
+              <Icon name="copy" /> <span>FEN</span>
+            </button>
+            {!s.gameId && (
+              <button type="button" className="tool" onClick={saveToLibrary} disabled={saving} aria-label="Save to library" title="Save to library">
+                <Icon name="library" /> <span>Save</span>
+              </button>
+            )}
             <button type="button" className="tool tool-accent" onClick={reviewThisGame}>
               <Icon name="review" /> <span>Review this game</span>
             </button>

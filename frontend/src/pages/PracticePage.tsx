@@ -3,6 +3,7 @@ import type { DrawShape } from '@lichess-org/chessground/draw'
 import type { Key } from '@lichess-org/chessground/types'
 import { Board } from '../components/Board'
 import { Icon } from '../components/Icon'
+import { MiniBoard } from '../components/MiniBoard'
 import { Modal } from '../components/Modal'
 import { useLoad } from '../hooks/useLoad'
 import { useOpening } from '../hooks/useOpening'
@@ -132,6 +133,7 @@ function PlayTab() {
 
   if (setup) {
     return (
+      <div className="play-setup-layout">
       <div className="panel play-setup">
         <h2>New game against Stockfish</h2>
         <fieldset className="choice-group">
@@ -139,12 +141,13 @@ function PlayTab() {
           <label><input type="radio" name="pc" checked={color === 'white'} onChange={() => setColor('white')} /> White</label>
           <label><input type="radio" name="pc" checked={color === 'black'} onChange={() => setColor('black')} /> Black</label>
         </fieldset>
-        <fieldset className="choice-group stacked">
+        <fieldset className="choice-group ladder">
           <legend>Strength</legend>
-          {LEVELS.map((l) => (
-            <label key={l.elo}>
+          {[...LEVELS].reverse().map((l) => (
+            <label key={l.elo} className={elo === l.elo ? 'is-on' : undefined}>
               <input type="radio" name="lvl" checked={elo === l.elo} onChange={() => setElo(l.elo)} />
-              <span><strong>{l.label}</strong> <span className="muted">{l.detail}</span></span>
+              <span className="ladder-name">{l.label}</span>
+              <span className="ladder-detail">{l.detail}</span>
             </label>
           ))}
         </fieldset>
@@ -160,6 +163,14 @@ function PlayTab() {
         </fieldset>
         <p className="muted small">Strength uses Stockfish’s own rating limiter, which is calibrated against human-like play at long time controls.</p>
         <button type="button" className="btn btn-primary" onClick={begin}>Start the game</button>
+      </div>
+      <figure className="play-preview">
+        <MiniBoard fen={start} orientation={color} label={`Starting position, seen from ${color}`} />
+        <figcaption>
+          You play {color === 'white' ? 'White' : 'Black'} against Stockfish {elo ? `rated about ${elo}` : 'at full strength'}
+          {start === START_FEN ? ', from the starting position.' : ', from the analysis board position.'}
+        </figcaption>
+      </figure>
       </div>
     )
   }

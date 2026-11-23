@@ -51,6 +51,13 @@ export function EndgamesPage() {
           The tablebases are not installed, so Stockfish judges the moves instead. For exact answers, run <code>./scripts/get-tablebases.sh</code> (about 1 GB) and restart Timur.
         </p>
       )}
+      {data && lessons.length > 0 && (
+        <div className="tally" role="img" aria-label={`${done} of ${lessons.length} lessons practised`}>
+          {lessons.map((l) => (
+            <span key={l.id} className={l.progress?.due ? 'tally-due' : l.progress && l.progress.successes > 0 ? 'tally-done' : undefined} />
+          ))}
+        </div>
+      )}
       {data && (
         <p className="muted endgame-summary">
           {done} of {lessons.length} practised{due ? `, ${due} due today` : ''}. A lesson you solve comes back after 1 day, then 3, then less and less often.
@@ -69,7 +76,10 @@ export function EndgamesPage() {
         if (!items.length) return null
         return (
           <section key={cat} className="lesson-group">
-            <h2>{cat}</h2>
+            <h2>
+              {cat}
+              <span className="group-count">{items.filter((l) => l.progress && l.progress.successes > 0).length} of {items.length}</span>
+            </h2>
             <ul className="lesson-grid">{items.map((l) => <LessonCard key={l.id} l={l} />)}</ul>
           </section>
         )

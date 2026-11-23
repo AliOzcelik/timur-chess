@@ -124,7 +124,7 @@ export function App() {
         </a>
         <ul className="nav-list">
           {NAV.map((item) => (
-            <li key={item.id}>
+            <li key={item.id} className={item.id === 'endgames' ? 'nav-break' : undefined}>
               <a href={`#/${item.id}`} className="nav-item" aria-current={section === item.id ? 'page' : undefined}>
                 <Icon name={item.icon} size={19} />
                 <span>{item.label}</span>

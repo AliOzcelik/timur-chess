@@ -141,12 +141,34 @@ def threat_board(board: chess.Board) -> chess.Board:
     return chess.Board(b.fen())
 
 
+class _LiveRun:
+    """State of one live analysis, shared between the task running it and whoever stops it."""
+
+    def __init__(self) -> None:
+        self.stopping = False
+        self.analysis: chess.engine.AnalysisResult | None = None
+
+    def request_stop(self) -> None:
+        self.stopping = True
+        if self.analysis is not None:
+            self.analysis.stop()  # Stockfish answers with "bestmove"; the run then ends by itself
+
+
+STOP_TIMEOUT = 5.0  # seconds to wait for Stockfish to end a search before restarting it
+
+
 class LiveAnalysis:
-    """One live analysis at a time on the shared 'live' engine. A new request replaces the old one."""
+    """One live analysis at a time on the shared 'live' engine. A new request replaces the old one.
+
+    A running search is never cancelled from outside: cancelling an asyncio task while python-chess
+    waits for Stockfish's reply breaks its command bookkeeping, and the engine then stops answering
+    for good. Instead the search is told to stop, and the next one starts once Stockfish has ended it.
+    """
 
     def __init__(self, service: EngineService):
         self.service = service
         self._task: asyncio.Task[None] | None = None
+        self._run_state: _LiveRun | None = None
         self._owner: object | None = None
         self._lock = asyncio.Lock()
 
@@ -154,7 +176,9 @@ class LiveAnalysis:
         async with self._lock:
             await self._cancel_current()
             self._owner = owner
-            self._task = asyncio.create_task(self._run(send, request))
+            run = _LiveRun()
+            self._run_state = run
+            self._task = asyncio.create_task(self._run(send, request, run))
 
     async def stop(self, owner: object | None = None) -> None:
         async with self._lock:
@@ -162,13 +186,27 @@ class LiveAnalysis:
                 await self._cancel_current()
 
     async def _cancel_current(self) -> None:
-        task, self._task = self._task, None
-        if task is not None and not task.done():
+        task, run = self._task, self._run_state
+        self._task, self._run_state = None, None
+        if task is None or task.done():
+            return
+        assert run is not None
+        run.request_stop()
+        try:
+            # shield: if our caller is cancelled (a tab closing), the run still ends cleanly.
+            await asyncio.wait_for(asyncio.shield(task), timeout=STOP_TIMEOUT)
+        except asyncio.TimeoutError:
+            log.warning("Live analysis did not stop in time; restarting the live engine")
             task.cancel()
-            try:
-                await task
-            except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                pass
+            await self._restart_engine()
+        except Exception:  # noqa: BLE001 - the run reports its own errors
+            pass
+
+    async def _restart_engine(self) -> None:
+        try:
+            await self.service.close()
+        except Exception:  # noqa: BLE001
+            log.exception("Could not close the live engine")
 
     async def evaluate(self, fen: str | None, moves: list[str] | None, depth: int, seconds: float) -> dict[str, Any]:
         """One-off evaluation (used by review's 'retry' mode). Pauses live analysis."""
@@ -179,7 +217,8 @@ class LiveAnalysis:
             if done is not None:
                 return {"eval": done, "best": None, "pv_san": []}
             engine = await self.service.get()
-            info = await engine.analyse(board, chess.engine.Limit(depth=depth, time=seconds))
+            # shield: an HTTP request that goes away mustn't cancel the engine mid-command.
+            info = await asyncio.shield(engine.analyse(board, chess.engine.Limit(depth=depth, time=seconds)))
             pv = info.get("pv") or []
             return {
                 "eval": score_to_eval(info["score"]),
@@ -188,10 +227,27 @@ class LiveAnalysis:
                 "depth": info.get("depth"),
             }
 
-    async def _run(self, send: Send, request: dict[str, Any]) -> None:
+    async def _run(self, send: Send, request: dict[str, Any], run: _LiveRun) -> None:
+        try:
+            await self._analyse(send, request, run)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - never leave a broken engine behind
+            log.exception("Live analysis failed; the live engine will restart on the next request")
+            await self._restart_engine()
+            if not run.stopping:
+                try:
+                    await send({"type": "error", "id": request.get("id"),
+                                "message": f"The engine had a problem ({type(exc).__name__}). It restarts on the next move."})
+                except Exception:  # noqa: BLE001
+                    pass
+
+    async def _analyse(self, send: Send, request: dict[str, Any], run: _LiveRun) -> None:
         rid = request.get("id")
 
         async def safe_send(msg: dict[str, Any]) -> bool:
+            if run.stopping:
+                return False  # a newer request has taken over; this one stays quiet
             try:
                 await send(msg)
                 return True
@@ -222,6 +278,8 @@ class LiveAnalysis:
             engine = await self.service.get()
         except EngineUnavailable as exc:
             await safe_send({"type": "error", "id": rid, "message": str(exc)})
+            return
+        if run.stopping:
             return
 
         legal = board.legal_moves.count()
@@ -265,6 +323,9 @@ class LiveAnalysis:
             # No `game=` argument on purpose: keeping the hash between requests makes
             # stepping back and forth through a game much faster.
             with await engine.analysis(board, limit, multipv=multipv) as analysis:
+                run.analysis = analysis
+                if run.stopping:
+                    analysis.stop()  # replaced while the search was starting
                 async for info in analysis:
                     pv = info.get("pv")
                     score = info.get("score")
@@ -285,6 +346,7 @@ class LiveAnalysis:
             await safe_send({"type": "error", "id": rid, "message": "Stockfish stopped unexpectedly. It will restart on the next request."})
             return
         finally:
+            run.analysis = None
             sender_task.cancel()
         if lines:
             await safe_send(snapshot())

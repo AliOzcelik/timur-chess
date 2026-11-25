@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Icon } from '../components/Icon'
 import { Masthead, Meta } from '../components/Masthead'
 import { MiniBoard } from '../components/MiniBoard'
 import { useLoad } from '../hooks/useLoad'
-import { api, type Accent, type AppSettings, type Backup, type BoardPalette, type SettingsView, type Theme } from '../lib/api'
+import { api, type Accent, type AppSettings, type Backup, type BoardPalette, type LlmStatus, type SettingsView, type Theme } from '../lib/api'
 import { formatDate } from '../lib/format'
 import { applyAppearance } from '../state/theme'
 import { useHealth } from '../state/health'
@@ -17,6 +17,7 @@ const SECTIONS = [
   { id: 'you', label: 'You', icon: 'people' },
   { id: 'appearance', label: 'Appearance', icon: 'grid' },
   { id: 'review', label: 'Game review', icon: 'review' },
+  { id: 'ai', label: 'AI coach', icon: 'spark' },
   { id: 'engine', label: 'Engine', icon: 'settings' },
   { id: 'tablebases', label: 'Tablebases', icon: 'endgame' },
   { id: 'internet', label: 'Internet', icon: 'link' },
@@ -316,6 +317,8 @@ export function SettingsPage() {
             </div>
           </section>
 
+          <CoachCard s={draft} saved={view.settings} onSave={(c, note) => { setDraft({ ...draft, ...c }); save(c, note) }} />
+
           <section className="card" id="engine" aria-labelledby="engine-title">
             <div className="card-head"><h2 className="card-title" id="engine-title">Engine</h2><span className="right">{view.detected_stockfish ? 'Stockfish found' : 'Stockfish not found'}</span></div>
             <div className="set-body">
@@ -390,6 +393,63 @@ export function SettingsPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+/** Settings for the local LLM that writes mistake explanations in Game Review. */
+function CoachCard({ s, saved, onSave }: {
+  s: AppSettings
+  saved: AppSettings
+  onSave: (changes: Partial<AppSettings>, note?: string) => void
+}) {
+  const [url, setUrl] = useState(s.llm_base_url)
+  const [model, setModel] = useState(s.llm_model)
+  const [status, setStatus] = useState<LlmStatus | null>(null)
+  const [checking, setChecking] = useState(false)
+
+  const check = useCallback(async () => {
+    setChecking(true)
+    try { setStatus(await api.llmStatus()) } catch { setStatus(null) } finally { setChecking(false) }
+  }, [])
+  useEffect(() => { check() }, [check, saved.llm_enabled, saved.llm_base_url, saved.llm_model])
+
+  const changed = url.trim() !== saved.llm_base_url || model.trim() !== saved.llm_model
+  const ok = status?.reachable && status.installed
+
+  return (
+    <section className="card" id="ai" aria-labelledby="ai-title">
+      <div className="card-head"><h2 className="card-title" id="ai-title">AI coach</h2><span className="right">{s.llm_enabled ? 'On' : 'Off'}</span></div>
+      <div className="set-body">
+        <label className="switch">
+          <input type="checkbox" checked={s.llm_enabled} onChange={(e) => onSave({ llm_enabled: e.target.checked }, e.target.checked ? 'AI explanations turned on.' : 'AI explanations turned off.')} />
+          <span className="switch-track" aria-hidden="true" />
+          <span>Explain mistakes in Game Review with a local model</span>
+        </label>
+        {s.llm_enabled && (
+          <div className="status-line" role="status">
+            <span className={checking ? 'off' : ok ? 'ok' : 'warn'} aria-hidden="true" />
+            <span>{checking ? 'Checking…' : ok ? <><b>{saved.llm_model}</b> is ready</> : status?.error ?? 'Not checked yet'}</span>
+          </div>
+        )}
+        <label className="set-field">
+          <span className="set-label">Model</span>
+          <input className="input" value={model} onChange={(e) => setModel(e.target.value)} list="llm-models" placeholder="gemma4:12b-mlx" />
+          <datalist id="llm-models">{(status?.models ?? []).map((m) => <option key={m} value={m} />)}</datalist>
+        </label>
+        <label className="set-field">
+          <span className="set-label">Model server</span>
+          <input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://localhost:11434/v1" />
+        </label>
+        <p className="set-help">
+          Any server with an OpenAI-style API works (Ollama, LM Studio, llama.cpp). Stockfish and the board checks supply the facts; the model only puts them into words. Keep the server on this Mac (localhost) so nothing leaves it.
+        </p>
+        <div className="row set-actions">
+          <button type="button" className="btn btn-sm btn-primary" disabled={!changed || !model.trim()}
+            onClick={() => onSave({ llm_base_url: url.trim(), llm_model: model.trim() }, 'AI coach settings saved.')}>Save</button>
+          <button type="button" className="btn btn-sm btn-ghost" onClick={check} disabled={checking}><Icon name="refresh" />Check again</button>
+        </div>
+      </div>
+    </section>
   )
 }
 

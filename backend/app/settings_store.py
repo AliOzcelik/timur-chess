@@ -27,6 +27,9 @@ def defaults() -> dict[str, Any]:
         "accent": "brass",  # brass | ember | amethyst | cobalt: the UI's attention colour
         "board": "walnut",  # walnut | slate | moss | rosewood: the two square colours
         "allow_internet": False,  # only for downloading an opponent's public games
+        "llm_enabled": True,  # AI explanations in Game Review, from a model running on this Mac
+        "llm_base_url": "http://localhost:11434/v1",  # Ollama's OpenAI-style API
+        "llm_model": "gemma4:12b-mlx",
         "player_names": [],  # your names in PGN headers, to know which side you played
         "onboarded": False,
     }

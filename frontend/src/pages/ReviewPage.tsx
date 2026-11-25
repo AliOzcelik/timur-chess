@@ -9,7 +9,7 @@ import { EvalBar } from '../components/EvalBar'
 import { EvalGraph } from '../components/EvalGraph'
 import { Icon } from '../components/Icon'
 import { GLYPH, Scoresheet } from '../components/Scoresheet'
-import { api, type Classification, type ReviewDetail, type ReviewMove } from '../lib/api'
+import { api, type Classification, type CoachExplanation, type ReviewDetail, type ReviewMove } from '../lib/api'
 import { numberedLine, playUci, turnOf, uciSquares, type Color } from '../lib/chess'
 import { formatEval, winWhite } from '../lib/evals'
 import { useShortcuts } from '../lib/keys'
@@ -57,6 +57,82 @@ function LineText({ fen, sans }: { fen: string; sans: string[] }) {
         <span key={t.index}>{t.label && <span className="pv-num">{t.label}</span>}{t.san} </span>
       ))}
     </span>
+  )
+}
+
+const FACT_LABEL: Record<string, string> = {
+  side: 'You played',
+  move_played: 'Move played',
+  move_played_does: 'What it does',
+  best_move_does: 'What the best move does',
+  classification: 'Label',
+  win_pct_drop: 'Winning chance lost (points)',
+  best_move: 'Best move',
+  best_line: 'Best line',
+  refutation: 'Refutation',
+  changes_after_played_line: 'What your move changed',
+  changes_after_best_line: 'What the best move changed',
+  material_after_refutation: 'Material after the refutation',
+  material_after_best_line: 'Material after the best line',
+  material_lost_by_move_played: 'Material lost',
+  good_alternatives: 'Also fine',
+  threat_missed: 'Missed threat',
+  tactics: 'Tactics',
+}
+
+/** Asks the local LLM to explain a mistake from Stockfish's lines and board facts. */
+function CoachBox({ reviewId, move, onResult }: {
+  reviewId: number
+  move: ReviewMove
+  onResult: (index: number, coach: CoachExplanation) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const coach = move.coach
+
+  const run = async (refresh: boolean) => {
+    setBusy(true)
+    setError(null)
+    try {
+      onResult(move.index, await api.explainMove(reviewId, move.index, refresh))
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="coach" aria-busy={busy}>
+      {coach ? (
+        <>
+          <div className="coach-text">
+            <span className="lab"><Icon name="spark" size={12} /> {coach.source === 'llm' ? `Coach · ${coach.model}` : 'Coach · built-in hint'}</span>
+            <p className="explain">{coach.text}</p>
+          </div>
+          {coach.note && <p className="dim small coach-note">{coach.note}</p>}
+          <details className="coach-facts">
+            <summary>Facts the coach was given</summary>
+            <dl>
+              {Object.entries(coach.facts).map(([k, v]) => (
+                <div key={k} className="fact-row">
+                  <dt>{FACT_LABEL[k] ?? k.replace(/_/g, ' ')}</dt>
+                  <dd>{Array.isArray(v) ? v.join('; ') : String(v ?? '–')}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
+          <button type="button" className="btn btn-sm btn-ghost" onClick={() => run(true)} disabled={busy}>
+            <Icon name="refresh" size={14} /> {busy ? 'Rewriting…' : 'Explain again'}
+          </button>
+        </>
+      ) : (
+        <button type="button" className="btn btn-sm" onClick={() => run(false)} disabled={busy}>
+          <Icon name="spark" size={14} /> {busy ? 'Asking Stockfish and the local model…' : 'Explain with AI'}
+        </button>
+      )}
+      {error && <p className="coach-error" role="alert">{error}</p>}
+    </div>
   )
 }
 
@@ -146,6 +222,14 @@ export function ReviewPage({ id }: { id: number }) {
   }, !!analysis && !retry)
 
   const move: ReviewMove | null = pos > 0 ? moves[pos - 1] ?? null : null
+
+  const saveCoach = useCallback((index: number, coach: CoachExplanation) => {
+    setReview((r) => {
+      if (!r?.analysis) return r
+      const updated = r.analysis.moves.map((m) => (m.index === index ? { ...m, coach } : m))
+      return { ...r, analysis: { ...r.analysis, moves: updated } }
+    })
+  }, [])
 
   const shapes = useMemo<DrawShape[]>(() => {
     if (!move || retry) return []
@@ -524,6 +608,9 @@ export function ReviewPage({ id }: { id: number }) {
                 </div>
                 <div className="move-body">
                   <p className="explain explanation">{move.explanation}</p>
+                  {BAD.includes(move.classification) && review && (
+                    <CoachBox key={move.index} reviewId={review.id} move={move} onResult={saveCoach} />
+                  )}
                   {move.best && move.best.uci !== move.uci && move.classification !== 'forced' && (
                     <p className="best-line"><span className="lab">Best line </span><LineText fen={move.fen_before} sans={move.best_line_san} /></p>
                   )}

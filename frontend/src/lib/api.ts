@@ -102,6 +102,27 @@ export interface ReviewMove {
   best_line_san: string[]
   reply_line_san: string[]
   explanation: string
+  coach?: CoachExplanation
+}
+
+/** A local-LLM explanation, written from Stockfish and board facts. */
+export interface CoachExplanation {
+  text: string
+  source: 'llm' | 'template'
+  model: string
+  facts: Record<string, unknown>
+  note?: string
+  created_at: number
+}
+
+export interface LlmStatus {
+  enabled: boolean
+  base_url: string
+  model: string
+  reachable: boolean
+  installed: boolean
+  models: string[]
+  error: string | null
 }
 
 export interface ReviewSideSummary {
@@ -126,6 +147,60 @@ export interface ReviewDetail extends ReviewSummaryRow {
   analysis: ReviewAnalysis | null
 }
 
+// ---- AI coach chat (streamed) -----------------------------------------------------------------
+
+export interface ChatTurn {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export type ChatEvent =
+  | { type: 'status'; text: string }
+  | { type: 'facts'; facts: Record<string, unknown> }
+  | { type: 'delta'; text: string }
+  | { type: 'done'; unverified: string[] }
+  | { type: 'error'; message: string }
+
+/** Ask the coach about the board position. Events arrive as the server sends them. */
+export async function streamCoachChat(
+  body: { fen: string; moves: string[]; messages: ChatTurn[] },
+  onEvent: (e: ChatEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  let res: Response
+  try {
+    res = await fetch('/api/coach/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal,
+    })
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') throw e
+    throw new ApiError('Cannot reach the Timur server. Is ./start.sh still running?')
+  }
+  if (!res.ok || !res.body) {
+    const data = await res.json().catch(() => ({}))
+    const detail = (data as { detail?: unknown }).detail
+    throw new ApiError(typeof detail === 'string' ? detail : `Server error (${res.status}).`)
+  }
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let nl: number
+    while ((nl = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, nl).trim()
+      buffer = buffer.slice(nl + 1)
+      if (line) onEvent(JSON.parse(line) as ChatEvent)
+    }
+  }
+  if (buffer.trim()) onEvent(JSON.parse(buffer) as ChatEvent)
+}
+
 const coreApi = {
   health: () => request<Health>('GET', '/api/health'),
   parsePgn: (pgn: string) =>
@@ -141,6 +216,9 @@ const coreApi = {
       pgn, profile, my_color: myColor, ...(gameId != null ? { game_id: gameId } : {}),
     }),
   deleteReview: (id: number) => request<{ ok: boolean }>('DELETE', `/api/reviews/${id}`),
+  explainMove: (id: number, index: number, refresh = false) =>
+    request<CoachExplanation>('POST', `/api/reviews/${id}/moves/${index}/explain`, { refresh }),
+  llmStatus: () => request<LlmStatus>('GET', '/api/llm/status'),
 }
 
 // ---- query strings -------------------------------------------------------------------
@@ -455,6 +533,9 @@ export interface AppSettings {
   accent: Accent
   board: BoardPalette
   allow_internet: boolean
+  llm_enabled: boolean
+  llm_base_url: string
+  llm_model: string
   player_names: string[]
   onboarded: boolean
 }

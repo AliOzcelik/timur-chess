@@ -331,3 +331,17 @@
   .radio-cards.three { grid-template-columns: 1fr; }
   .review-page { --board-size: min(calc(100vw - 92px), 520px); }
 }
+
+/* AI coach: a local LLM writing up Stockfish's facts */
+.coach { margin-top: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
+.coach-text { width: 100%; padding: 9px 11px; border-radius: 8px; border-left: 2px solid var(--brass); background: color-mix(in srgb, var(--brass) 8%, transparent); }
+.coach-text .lab { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; font-family: var(--font-display); font-size: 8.5px; font-weight: 650; letter-spacing: 0.13em; text-transform: uppercase; color: var(--brass); }
+.coach-text .explain { color: var(--text); }
+.coach-note { margin: 0; }
+.coach-error { margin: 0; padding: 8px 11px; border-radius: 8px; border-left: 2px solid var(--danger, #c0392b); background: var(--surface2); font-size: 13px; color: var(--text2); }
+.coach-facts { width: 100%; font-size: 12px; color: var(--text2); }
+.coach-facts summary { cursor: pointer; color: var(--muted); }
+.coach-facts dl { margin: 6px 0 0; display: grid; gap: 4px; }
+.coach-facts .fact-row { display: grid; grid-template-columns: minmax(110px, 34%) 1fr; gap: 8px; }
+.coach-facts dt { color: var(--muted); }
+.coach-facts dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }

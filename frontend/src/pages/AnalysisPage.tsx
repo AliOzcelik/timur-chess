@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import type { DrawShape } from '@lichess-org/chessground/draw'
 import type { Key } from '@lichess-org/chessground/types'
 import { Board } from '../components/Board'
+import { CoachColumn } from '../components/CoachColumn'
 import { BoardShell, PlayerStrip } from '../components/BoardShell'
 import { Masthead, Meta } from '../components/Masthead'
 import { EngineLines } from '../components/EngineLines'
@@ -10,13 +11,16 @@ import { Icon } from '../components/Icon'
 import { ImportDialog } from '../components/ImportDialog'
 import { PositionEditor } from '../components/PositionEditor'
 import { PositionNotes } from '../components/PositionNotes'
+import { SaveAnalysisDialog, SavedAnalyses } from '../components/SavedAnalyses'
 import { Scoresheet } from '../components/Scoresheet'
 import { fullmoveOf, isCheck, turnOf, uciSquares } from '../lib/chess'
 import { formatEval, evalSide, type Eval } from '../lib/evals'
 import { useOpening } from '../hooks/useOpening'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import { api } from '../lib/api'
 import { useShortcuts } from '../lib/keys'
 import { navigate } from '../lib/router'
+import { loadJson, saveJson } from '../lib/storage'
 import { hasMoves, isOnMainline, movesTo, toPgn } from '../lib/tree'
 import { useAnalysis, useReviewDraft } from '../state/analysis'
 import { useLiveAnalysis, useEngine, type EngineInfo } from '../state/engine'
@@ -47,6 +51,11 @@ function arrowsFor(info: EngineInfo, threat: boolean): DrawShape[] {
   return threat ? shapes.slice(0, 1) : shapes
 }
 
+const SAVED_KEY = 'timur.saved-collapsed.v1'
+const COACH_KEY = 'timur.coach-collapsed.v1'
+/** Widths where the saved list and the coach column both fit (see analysis.css). */
+const ROOMY = '(max-width: 1400px), (min-width: 1800px)'
+
 export function AnalysisPage() {
   const s = useAnalysis()
   const engine = useEngine()
@@ -54,6 +63,25 @@ export function AnalysisPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [saveOpen, setSaveOpen] = useState(false)
+  const [savedCollapsed, setSavedCollapsed] = useState(() => loadJson<boolean>(SAVED_KEY, false))
+  const [coachCollapsed, setCoachCollapsed] = useState(() => loadJson<boolean>(COACH_KEY, false))
+  // Between these widths the saved list and the coach don't both fit beside a usable board:
+  // opening one folds the other, and the coach wins when both were left open.
+  const roomy = useMediaQuery(ROOMY)
+  const savedShown = !savedCollapsed && (roomy || coachCollapsed)
+  const setSaved = (open: boolean) => { setSavedCollapsed(!open); saveJson(SAVED_KEY, !open) }
+  const setCoach = (open: boolean) => { setCoachCollapsed(!open); saveJson(COACH_KEY, !open) }
+  const toggleSaved = () => {
+    const open = !savedShown
+    setSaved(open)
+    if (open && !roomy) setCoach(false)
+  }
+  const toggleCoach = () => {
+    const open = coachCollapsed
+    setCoach(open)
+    if (open && !roomy && !savedCollapsed) setSaved(false)
+  }
   const noticeTimer = useRef<number>(undefined)
 
   const node = s.tree.nodes[s.currentId]
@@ -116,27 +144,33 @@ export function AnalysisPage() {
     navigate('/review/new')
   }
 
-  const saveToLibrary = async () => {
-    if (!hasMoves(s.tree)) {
-      flash('Play or import some moves first.')
-      return
+  /** Save the board in the library under a name (kept in the PGN's Event header), or rename it. */
+  const saveAnalysis = async (name: string) => {
+    s.setHeaders({ Event: name })
+    const { tree, gameId } = useAnalysis.getState()
+    if (gameId) {
+      flash(name ? `Renamed to “${name}”.` : 'Name removed.')
+      return // the change saves itself, like every other change to a saved board
     }
     setSaving(true)
     try {
       const named = Boolean(white || black)
-      const res = await api.saveGame({
-        pgn: toPgn(s.tree),
-        kind: named ? 'game' : 'analysis',
-        source: 'board',
-        my_color: s.orientation,
-      })
+      const pgn = toPgn(tree)
+      const res = await api.saveGame({ pgn, kind: named ? 'game' : 'analysis', source: 'board', my_color: s.orientation })
+      if (!res.created) await api.updateGame(res.id, { pgn })
       s.setGameId(res.id)
-      flash(res.created ? 'Saved in the library. Changes are saved automatically from now on.' : 'This game is already in the library. Changes are saved there.')
-    } catch (e) {
-      flash((e as Error).message)
+      flash(res.created ? 'Saved. Changes are saved automatically from now on.' : 'This game was already in the library. It is updated there.')
     } finally {
       setSaving(false)
     }
+  }
+
+  const askToSave = () => {
+    if (!hasMoves(s.tree) && !s.gameId) {
+      flash('Play or import some moves first.')
+      return
+    }
+    setSaveOpen(true)
   }
 
   const newBoard = () => {
@@ -205,7 +239,9 @@ export function AnalysisPage() {
         }
       />
 
-      <div className="analysis-grid">
+      <div className={`analysis-grid ${savedShown ? 'with-saved' : 'saved-hidden'} ${coachCollapsed ? 'coach-hidden' : 'with-coach'}`}>
+        <SavedAnalyses collapsed={!savedShown} onToggle={toggleSaved} onSave={askToSave} onError={flash} />
+
         <section className="board-col" aria-label="Board">
           <BoardShell
             top={<PlayerStrip position="top" name={nameOf(topSide)} rating={ratingOf(topSide)} side={topSide} toMove={turn === topSide} />}
@@ -243,9 +279,11 @@ export function AnalysisPage() {
             </button>
             <span className="tool-right">
               {s.gameId ? (
-                <span className="tool tool-quiet"><Icon name="save" /><span>{s.saveState === 'saving' ? 'Saving…' : s.saveState === 'error' ? 'Not saved' : 'Saved'}</span></span>
+                <button type="button" className="tool tool-quiet" onClick={askToSave} title="Saved in the library. Click to rename.">
+                  <Icon name="save" /><span>{s.saveState === 'saving' ? 'Saving…' : s.saveState === 'error' ? 'Not saved' : 'Saved'}</span>
+                </button>
               ) : (
-                <button type="button" className="tool" onClick={saveToLibrary} disabled={saving} aria-label="Save to library" title="Save to library">
+                <button type="button" className="tool" onClick={askToSave} disabled={saving} aria-label="Save analysis" title="Save this analysis in the library">
                   <Icon name="save" /><span>Save</span>
                 </button>
               )}
@@ -375,8 +413,17 @@ export function AnalysisPage() {
 
           <PositionNotes fen={node.fen} opening={opening} gameId={s.gameId} />
         </aside>
+
+        <CoachColumn collapsed={coachCollapsed} onToggle={toggleCoach} fen={root.fen} moves={moves} label={lastSan ?? 'the start'} />
       </div>
 
+      <SaveAnalysisDialog
+        open={saveOpen}
+        onClose={() => setSaveOpen(false)}
+        saved={Boolean(s.gameId)}
+        defaultName={event ?? (opening ? opening.name : `Analysis ${new Date().toLocaleDateString()}`)}
+        onSubmit={saveAnalysis}
+      />
       <ImportDialog
         open={importOpen}
         onClose={() => setImportOpen(false)}

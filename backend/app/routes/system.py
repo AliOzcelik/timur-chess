@@ -44,6 +44,9 @@ class SettingsIn(BaseModel):
     accent: Literal["brass", "ember", "amethyst", "cobalt"] | None = None
     board: Literal["walnut", "slate", "moss", "rosewood"] | None = None
     allow_internet: bool | None = None
+    llm_enabled: bool | None = None
+    llm_base_url: str | None = Field(None, max_length=500)
+    llm_model: str | None = Field(None, min_length=1, max_length=200)
     player_names: list[str] | None = Field(None, max_length=20)
     onboarded: bool | None = None
 
@@ -75,6 +78,13 @@ async def put_settings(req: SettingsIn) -> dict[str, Any]:
         if not path.is_file():
             raise HTTPException(400, f"No file at {path}.")
         changes["stockfish_path"] = str(path)
+    if "llm_base_url" in changes:
+        url = changes["llm_base_url"].strip().rstrip("/")
+        if not url.startswith(("http://", "https://")):
+            raise HTTPException(400, "The model server address must start with http:// or https://.")
+        changes["llm_base_url"] = url
+    if "llm_model" in changes:
+        changes["llm_model"] = changes["llm_model"].strip()
     if "player_names" in changes:
         changes["player_names"] = [n.strip() for n in changes["player_names"] if n.strip()]
     settings.update(changes)

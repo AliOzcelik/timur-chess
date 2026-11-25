@@ -42,6 +42,8 @@ interface AnalysisState extends EngineSettings {
   promote: (id: string) => void
   load: (tree: GameTree, currentId?: string, orientation?: Color, gameId?: number | null) => void
   setGameId: (id: number | null) => void
+  /** Change PGN headers (e.g. the Event header, used as the analysis name). */
+  setHeaders: (headers: Record<string, string>) => void
   reset: (fen?: string) => void
   flip: () => void
   setSettings: (s: Partial<EngineSettings>) => void
@@ -115,6 +117,15 @@ export const useAnalysis = create<AnalysisState>((set, get) => ({
       gameId, saveState: gameId ? 'saved' : 'idle', ...(orientation ? { orientation } : {}),
     }),
   setGameId: (id) => set({ gameId: id, saveState: id ? 'saved' : 'idle' }),
+  setHeaders: (headers) => {
+    const tree = get().tree
+    const next = { ...tree.headers }
+    for (const [k, v] of Object.entries(headers)) {
+      if (v.trim()) next[k] = v.trim()
+      else delete next[k]
+    }
+    set({ tree: { ...tree, headers: next } })
+  },
   reset: (fen) => {
     const tree = createTree(fen)
     set({ tree, currentId: tree.rootId, threat: false, gameId: null, saveState: 'idle' })

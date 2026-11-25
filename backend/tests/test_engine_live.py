@@ -165,3 +165,93 @@ async def test_engine_restarts_after_it_dies(service):
     assert service.status()["running"] is True
     info = await second.analyse(chess.Board(), chess.engine.Limit(depth=5))
     assert "score" in info
+
+
+# ---- quick replacements (two browser tabs, fast arrow keys) -------------------------------
+# Cancelling a search while python-chess waits for Stockfish's reply used to break the engine
+# connection for good: every later request got no answer until the server restarted.
+
+SICILIAN = ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "b8c6", "f1e2", "g7g6"]
+
+
+def loop_errors() -> list[dict]:
+    """Collect errors that asyncio would otherwise only log (like the broken engine callbacks)."""
+    errors: list[dict] = []
+    asyncio.get_running_loop().set_exception_handler(lambda _loop, ctx: errors.append(ctx))
+    return errors
+
+
+async def test_rapid_requests_from_two_tabs_keep_the_engine_working(service, inbox):
+    import random
+
+    errors = loop_errors()
+    live = LiveAnalysis(service)
+    tabs = [object(), object()]
+    # This fixed sequence of starts, stops and pauses broke the old code every time.
+    rnd = random.Random(1)
+    for i in range(300):
+        tab = tabs[0] if rnd.random() < 0.5 else tabs[1]
+        n = rnd.randint(0, len(SICILIAN))
+        req = request(1000 + i, moves=SICILIAN[:n], multipv=3, depth=None, threat=rnd.random() < 0.1)
+        if rnd.random() < 0.15:
+            await live.stop(tab)
+        else:
+            await live.start(inbox.send, req, owner=tab)
+        await asyncio.sleep(rnd.choice([0, 0, 0.001, 0.005, 0.02, 0.1]))
+
+    await live.start(inbox.send, request(2000, moves=SICILIAN, depth=8), owner=tabs[0])
+    await inbox.wait_finished(2000)
+    assert inbox.of(2000, "info")[-1]["lines"], "the engine must still answer"
+    assert not errors, [e.get("message") for e in errors]
+    await live.stop()
+
+
+async def test_replaced_while_the_search_is_starting(service, inbox):
+    errors = loop_errors()
+    live = LiveAnalysis(service)
+    owner = object()
+    for i in range(40):  # no pause at all: each search is replaced before Stockfish even confirms it
+        await live.start(inbox.send, request(3000 + i, moves=SICILIAN[: i % len(SICILIAN)], depth=None), owner=owner)
+    await live.start(inbox.send, request(3100, depth=6), owner=owner)
+    await inbox.wait_finished(3100)
+    assert inbox.of(3100, "info")[-1]["lines"]
+    assert not errors
+    # Replaced searches stay quiet once a newer one has taken over.
+    assert not any(m["type"] == "done" for i in range(40) for m in inbox.of(3000 + i))
+
+
+async def test_cancelled_evaluation_keeps_the_engine_working(service):
+    errors = loop_errors()
+    live = LiveAnalysis(service)
+    for delay in (0, 0.001, 0.01):
+        task = asyncio.create_task(live.evaluate(None, SICILIAN, depth=20, seconds=2))
+        await asyncio.sleep(delay)
+        task.cancel()  # the HTTP request went away
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    result = await live.evaluate(BACK_RANK, [], depth=8, seconds=2)
+    assert result["best"]["san"] == "Rd8#"
+    assert not errors
+
+
+async def test_engine_error_restarts_the_engine(service, inbox, monkeypatch):
+    live = LiveAnalysis(service)
+    first = await service.get()
+    real = type(first).analysis
+    calls = {"n": 0}
+
+    async def flaky(self, *args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise AssertionError("CommandState.NEW")  # what python-chess raised when it broke
+        return await real(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(first), "analysis", flaky)
+    await live.start(inbox.send, request(4000, depth=6), owner=object())
+    await inbox.wait_finished(4000)
+    assert inbox.of(4000, "error")[0]["message"].startswith("The engine had a problem")
+
+    await live.start(inbox.send, request(4001, depth=6), owner=object())
+    await inbox.wait_finished(4001)
+    assert inbox.of(4001, "info")[-1]["lines"]
+    assert await service.get() is not first, "a fresh Stockfish process should have been started"

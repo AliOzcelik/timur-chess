@@ -63,7 +63,9 @@ cd ~/Desktop/timur
 
 The first start takes about a minute. It creates a Python environment, installs the packages and builds the web interface. Later starts take a few seconds.
 
-Timur opens in your browser at **http://127.0.0.1:8000**. Keep the Terminal window open while you use it. Press **Ctrl+C** in Terminal to stop it.
+It also starts [Ollama](https://ollama.com) for the AI coach if it isn't running yet, and loads the coach's model in the background so the first answer is quick. If Ollama or the model is missing, it says how to install it, and the rest of Timur works as usual.
+
+Timur opens in your browser on the analysis board, with the AI coach, at **http://127.0.0.1:8000/#/analysis**. Keep the Terminal window open while you use it. Press **Ctrl+C** in Terminal to stop it.
 
 ### Endgame tablebases (recommended, about 1 GB)
 
@@ -98,8 +100,10 @@ A good first hour:
 - Threat mode (X) shows what the opponent is threatening if it were their move.
 - Import PGN or FEN, set up a position by hand, and copy the PGN or FEN.
 - The opening name (ECO code and name) is shown above the board.
-- **Save to library** stores the board, side lines and comments included. From then on every change is saved automatically ("Saved in library" next to the opening name).
+- **Save** (in the board toolbar, or **Save this analysis** in the Saved column) asks for a name and stores the board in the library, side lines and comments included. The name is kept in the PGN's Event header. From then on every change is saved automatically ("Saved to library" next to the opening name). Click **Saved** or **Rename this analysis** to change the name.
+- **Saved**, the column left of the board, lists your saved analyses, newest first. Search them by name or opening, switch to **All games** to see the whole library, click one to open it on the board (at its last move), or delete it with the bin icon. The arrow at the top folds the column into a thin strip to give the board more room; Timur remembers your choice.
 - **Notes on this position** lists your notes for the exact position on the board and lets you add one. The first line becomes the title. ⌘ Enter saves.
+- **AI coach** (its own column at the right; the arrow in its header folds it to a slim rail, the ✦ button opens it again. Below 1400 px wide it sits under the board, and between 1400 and 1800 px it takes turns with the Saved column) is a chat with the local model about the position on the board. Before each answer, Stockfish analyses the position (top 3 lines and the threat), checks any move you name in your question ("What about Nxe5?"), and python-chess lists the position's features. The model answers from those facts. Moves in an answer that Stockfish didn't look at are flagged, and **Facts from Stockfish and the board** under each answer shows what it was told. The chat stays while you move around the board; each question is tagged with the position it was asked about. Uses the same model and settings as Game review's AI explanations.
 - **Review this game** sends the main line to Game review.
 
 ### Game review
@@ -109,6 +113,7 @@ A good first hour:
 - Every move is labelled best, excellent, good, inaccuracy, mistake or blunder. Labels come from how much a move lowers the mover's chance of winning, using the same cut-offs as lichess (5, 10 and 15 percentage points). You can change them in Settings.
 - You get accuracy for each side, an evaluation graph, a plain-language reason for each mistake (for example a hanging piece or an allowed fork) and the best line.
 - **Retry this move** lets you look for the better move yourself before seeing the answer.
+- **Explain with AI** (optional) has a local model write a short explanation for an inaccuracy, mistake or blunder. The model doesn't judge the chess. Stockfish supplies the best line, the refutation, the other good moves and any threat you missed, and python-chess lists what each line changes in the position (backward or isolated pawns, outposts, king cover, loose pieces, material). The model only puts those facts into words. Every move it mentions is checked against the engine's lines; if it names one that isn't there, it is asked to rewrite, and if it still fails, the built-in hint is shown instead. Open **Facts the coach was given** to see exactly what it was told. Explanations are saved with the review. This needs [Ollama](https://ollama.com) running with the model installed (`ollama pull gemma4:12b-mlx`); you can change the model or server, or turn this off, in Settings → AI coach.
 - Reviews run in the background on their own Stockfish process, so the analysis board stays fast. Unfinished reviews start again after a restart.
 - Every reviewed game is filed in the library.
 
@@ -247,6 +252,7 @@ Most settings are on the Settings page. A few can also be given when starting, w
 | `STOCKFISH_PATH` | found automatically | Path to a specific Stockfish program |
 | `TIMUR_DATA_DIR` | `./data` | Where the database, backups and tablebases are |
 | `TIMUR_NO_BROWSER` | | Set to 1 to not open the browser |
+| `TIMUR_NO_AI` | | Set to 1 to not start Ollama or load the AI coach's model |
 | `TIMUR_LIVE_THREADS`, `TIMUR_LIVE_HASH_MB` | cores minus 4, 1024 | Analysis board engine |
 | `TIMUR_REVIEW_THREADS`, `TIMUR_REVIEW_HASH_MB` | up to 4, 256 | Game review engine |
 

@@ -9,6 +9,7 @@ from . import config
 from .db import Database
 from .engine import EngineService, LiveAnalysis
 from .library import Library
+from .llm import LLMClient
 from .review.runner import ReviewRunner
 from .settings_store import Settings
 from .tablebase import Tablebases
@@ -31,7 +32,10 @@ def syzygy_options() -> dict[str, Any]:
 live_service = EngineService("live", settings.engine("live"), syzygy_options)
 review_service = EngineService("review", settings.engine("review"), syzygy_options)
 trainer_service = EngineService("trainer", settings.engine("trainer"), syzygy_options)
+# A small engine of its own for AI explanations, so they never interrupt a running review.
+coach_service = EngineService("coach", settings.engine("trainer"), syzygy_options)
 live = LiveAnalysis(live_service)
+llm = LLMClient(settings)
 runner = ReviewRunner(review_service, db, settings)
 
 
@@ -40,7 +44,12 @@ async def apply_engine_settings() -> None:
     await live_service.apply(settings.engine("live"))
     await review_service.apply(settings.engine("review"))
     await trainer_service.apply(settings.engine("trainer"))
+    await coach_service.apply(settings.engine("trainer"))
 
 from .trainer import Trainer  # noqa: E402
 
 trainer = Trainer(trainer_service, tablebases)
+
+from .review.coach import Coach  # noqa: E402
+
+coach = Coach(coach_service, llm)

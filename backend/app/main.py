@@ -14,12 +14,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import config, openings
-from .context import db, library, live, live_service, review_service, runner, settings, tablebases, trainer_service
+from .context import (coach_service, db, library, live, live_service, review_service, runner, settings, tablebases,
+                      trainer_service)
 from .engine import EngineUnavailable
 from .library import backfill_reviews
 from .pgn_tools import PgnError, first_game, mainline_count, parse_for_board
 from .review.runner import PROFILES
-from .routes import endgames, library as library_routes, notes, practice, prep, system
+from .routes import coach as coach_routes, endgames, library as library_routes, notes, practice, prep, system
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("timur")
@@ -50,6 +51,7 @@ async def lifespan(_app: FastAPI):
     await live_service.close()
     await review_service.close()
     await trainer_service.close()
+    await coach_service.close()
     db.close()
 
 
@@ -68,7 +70,7 @@ def _daily_backup() -> None:
 
 
 app = FastAPI(title="Timur", version=VERSION, lifespan=lifespan)
-for module in (library_routes, notes, endgames, practice, prep, system):
+for module in (library_routes, notes, endgames, practice, prep, system, coach_routes):
     app.include_router(module.router)
 
 
